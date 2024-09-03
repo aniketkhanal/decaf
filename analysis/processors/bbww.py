@@ -266,7 +266,7 @@ class AnalysisProcessor(processor.ProcessorABC):
         if isData:
             # Nominal JEC are already applied in data
             return self.process_shift(events, None)
-
+        
         jet_factory              = self._corrections['jet_factory']
         met_factory              = self._corrections['met_factory']
 
@@ -511,29 +511,21 @@ class AnalysisProcessor(processor.ProcessorABC):
         # Calculate derivatives
         ###
 
-        j_candidates = j_soft[ak.argsort(j_soft.particleNetAK4_QvsG, axis=1, ascending=False)]#particleNetAK4_QvsG btagPNetQvG
-        j_candidates = j_candidates[:, :4] #consider only the first 4
-        j_candidates = j_candidates[ak.argsort(j_candidates.particleNetAK4_B, axis=1, ascending=False)]#particleNetAK4_B btagPNetB
-
-        try:
-            bb = j_candidates[:, 0] + j_candidates[:, 1]
-            mbb = bb.mass
-        except:
-            mbb = np.zeros(len(events), dtype='float')
-
-        try:
-            qq = j_candidates[:, -1] + j_candidates[:, -2]
-            mqq = qq.mass
-        except:
-            mqq = np.zeros(len(events), dtype='float')
+        j_candidates = j_soft[ak.argsort(j_soft.particleNetAK4_B, axis=1, ascending=False)] #particleNetAK4_B btagPNetB 
+        jb_candidates = j_candidates[:,:2] # two b-jets
+        j_candidates = j_candidates[:,2:]
         
-        j_candidates = j_candidates[:, -2:]
+        j_candidates = j_candidates[ak.argsort(j_candidates.particleNetAK4_QvsG, axis=1, ascending=False)]#particleNetAK4_QvsG btagPNetQvG
+        j_candidates = j_candidates[:,:3] # three leading qvg jets
         j_candidates = j_candidates[ak.argsort(j_candidates.pt, axis=1, ascending=False)]
-        try:
-            q2pt = j_candidates[:, -1].pt
-        except:
-            q2pt = np.zeros(len(events), dtype='float')
-            
+        
+        jj_i = ak.argcombinations(j_candidates,2,fields=["j1","j2"])
+        jj_i = jj_i[(j_candidates[jj_i.j1]+ j_candidates[jj_i.j2]).eta<2.0]
+        jj_i = jj_i[(j_candidates[jj_i.j1]+ j_candidates[jj_i.j2]).mass<120.0]
+        jj_i = jj_i[(j_candidates[jj_i.j2].pt > 20.0)] # subleading pt > 20 for TTbar selection
+        
+        qq = j_candidates[jj_i.j1] + j_candidates[jj_i.j2]
+        
         def neutrino_pz(l,v):
             m_w = 80.379
             m_l = l.mass            
@@ -542,11 +534,14 @@ class AnalysisProcessor(processor.ProcessorABC):
             C = l.energy**2 - l.pz**2
             discriminant = (2 * A * l.pz)**2 - 4 * (B - A**2) * C
             # avoiding imaginary solutions
-            sqrt_discriminant = ak.where(discriminant >= 0, np.sqrt(discriminant), np.nan)
+            #sqrt_discriminant = ak.where(discriminant >= 0, np.sqrt(discriminant), np.nan)
+            sqrt_discriminant = ak.where(discriminant >= 0, np.nan, v.pt)
             pz_1 = (2*A*l.pz + sqrt_discriminant)/(2*C)
             pz_2 = (2*A*l.pz - sqrt_discriminant)/(2*C)
-            return ak.where(abs(pz_1) < abs(pz_2), pz_1, pz_2)
-
+            #return ak.where(abs(pz_1) < abs(pz_2), pz_1, pz_2)
+            return sqrt_discriminant
+            
+        #top reconstruction
         v_e = ak.zip(
             {
                 "x": met.px,
@@ -557,13 +552,13 @@ class AnalysisProcessor(processor.ProcessorABC):
             with_name="LorentzVector",
             behavior=vector.behavior,
         )
-        try:
-            evqq = leading_e + v_e + qq
-            mevqq = evqq.mass
-        except:
-            mevqq = np.zeros(len(events), dtype='float')
-
-        v_m = ak.zip(
+        v_e = ak.mask(v_e, ~np.isnan(v_e.pz))
+        
+        # leptonic top with electrons
+        mevb1 = (leading_e + v_e + ak.pad_none(jb_candidates,2,axis=1)[:,0]).mass
+        mevb2 = (leading_e + v_e + ak.pad_none(jb_candidates,2,axis=1)[:,1]).mass
+            
+        v_mu = ak.zip(
             {
                 "x": met.px,
                 "y": met.py,
@@ -573,22 +568,64 @@ class AnalysisProcessor(processor.ProcessorABC):
             with_name="LorentzVector",
             behavior=vector.behavior,
         )
-        try:
-            mvqq = leading_mu + v_mu + qq
-            mmvqq = mvqq.mass
-        except:
-            mmvqq = np.zeros(len(events), dtype='float')
-
-        mlvqq = {
-            'esr'  : mevqq,
-            'msr'  : mmvqq
-        }
+        v_mu = ak.mask(v_mu, ~np.isnan(v_mu.pz))
+        
+        #leptonic top with muons
+        mmvb1 = (leading_mu + v_mu + ak.pad_none(jb_candidates,2,axis=1)[:,0]).mass
+        mmvb2 = (leading_mu + v_mu + ak.pad_none(jb_candidates,2,axis=1)[:,1]).mass
         
         mT = {
             'esr'  : np.sqrt(2*leading_e.pt*met.pt*(1-np.cos(met.delta_phi(leading_e.T)))),
             'msr'  : np.sqrt(2*leading_mu.pt*met.pt*(1-np.cos(met.delta_phi(leading_mu.T))))
         }
 
+        def distance(x1,y1,x2,y2):
+            return np.sqrt((x2-x1)**2+(y2-y1)**2)
+
+        l_mu = ~ak.is_none(leading_mu.pt)
+        l_e = ~ak.is_none(leading_e.pt)
+        muge = leading_mu.pt > leading_e.pt
+
+        mlvb1 = ak.where(l_mu & l_e,
+                         ak.where(muge, mmvb1, mevb1),
+                         ak.where(l_mu, mmvb1, mevb1)
+                         ) #leptonic candidate 1
+
+        mlvb2 = ak.where( l_mu & l_e,
+                          ak.where(muge, mmvb2, mevb2),
+                          ak.where(l_mu, mmvb2, mevb2)
+                          ) #leptonic candidate 2
+
+        nus = ak.where( l_mu & l_e,
+                          ak.where(muge, mmvb2, mevb2),
+	                  ak.where(l_mu, mmvb2, mevb2)
+	                  )
+        
+        mbqq1 = (ak.pad_none(jb_candidates,2,axis=1)[:,0] + qq).mass #hadronic candidate 1
+        mbqq2 = (ak.pad_none(jb_candidates,2,axis=1)[:,1] + qq).mass #hadronic candidate 2
+
+        tt1 = ak.cartesian({"t1":mlvb1,"t2":mbqq2},axis=1)
+        tt2 = ak.cartesian({"t1":mlvb2,"t2":mbqq1},axis=1)
+        b_sel = abs(distance(tt1.t1,tt1.t2,172.5,172.5)) <  abs(distance(tt2.t1,tt2.t2,172.5,172.5)) #pick pair closest to ttbar mass
+        c1 = ~ak.is_none(distance(tt1.t1, tt1.t2,172.5,172.5))
+        c2 = ~ak.is_none(distance(tt2.t1, tt2.t2,172.5,172.5))
+
+        tt = ak.where( c1 & c2, ak.where(b_sel, tt1 , tt2), ak.where(c1, tt1, tt2))
+
+        def chi_square(data):
+            x_2 = ak.sum(data**2)
+            n = ak.count(data[~ak.is_none(data)])
+            mean = ak.sum(data)/n
+            std = np.sqrt((ak.sum((data-mean)**2))/n)
+            chi2 = ((data - mean)/std)
+            return chi2, mean
+
+        chi1, mean1 = chi_square(tt.t1) #leptonic top
+        chi2, mean2 = chi_square(tt.t2) #hadronic top
+        chi3, mean3 = chi_square(qq.mass) #hadronic W
+        chi_sq_tt = np.sqrt(chi1 + chi2 + chi3)        
+
+        
         ###
         #Calculating weights
         ###
@@ -791,27 +828,8 @@ class AnalysisProcessor(processor.ProcessorABC):
                 weight = weights.weight()[cut]
             if systematic is None:
                 variables = {
-                    'met':                    met.pt,
-                    'metphi':                 met.phi,
-                    'j1pt':                   leading_j.pt,
-                    'j1eta':                  leading_j.eta,
-                    'j1phi':                  leading_j.phi,
-                    'njets':                  j_nsoft,
-                    'ndflvM':                 j_ndflvL,
-                    'mT':                     mT[region],
-                    'mlvqq':                  mlvqq[region],
-                    'mbb':                    mbb,
-                    'mqq':                    mqq,
-                    'q2pt':                   q2pt
+                    'met':                    nus.pt,
                 }
-                if 'e' in region:
-                    variables['l1pt']      = leading_e.pt
-                    variables['l1phi']     = leading_e.phi
-                    variables['l1eta']     = leading_e.eta
-                if 'm' in region:
-                    variables['l1pt']      = leading_mu.pt
-                    variables['l1phi']     = leading_mu.phi
-                    variables['l1eta']     = leading_mu.eta
                 
                 for variable in output:
                     if variable not in variables:
