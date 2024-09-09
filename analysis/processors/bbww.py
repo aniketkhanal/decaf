@@ -14,6 +14,7 @@ from coffea.util import load, save
 from optparse import OptionParser
 from coffea.nanoevents.methods import vector
 import gzip
+from scipy.optimize import minimize
 
 def update(events, collections):
     """Return a shallow copy of events array with some collections swapped out"""
@@ -99,8 +100,8 @@ class AnalysisProcessor(processor.ProcessorABC):
         self._skipJER = False
 
         self._samples = {
-            'msr':('QCD', 'TT', 'SingleMuon'),
-            'esr':('QCD', 'TT', 'SingleElectron', 'EGamma'),
+            'msr':('QCD', 'TT', 'SingleMuon', 'TTToSemiLeptonic', 'GluGluToHHTo2B2VLNu2J'),
+            'esr':('QCD', 'TT', 'SingleElectron', 'EGamma','TTToSemiLeptonic', 'GluGluToHHTo2B2VLNu2J'),
         }
         
         self._singleelectron_triggers = { 
@@ -186,65 +187,55 @@ class AnalysisProcessor(processor.ProcessorABC):
             'sumw': 0.,
             'met': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(30,0,600, name='met', label='MET'),
+                hist.axis.Regular(30,0,300, name='met', label='MET'),
                 storage=hist.storage.Weight(),
             ),
-            'metphi': hist.Hist(
+            'htm_reco': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(35,-3.5,3.5, name='metphi', label='MET phi'),
+                hist.axis.Regular(40,0,400, name='htm_reco', label='hadronic top mass [GeV]'),
                 storage=hist.storage.Weight(),
             ),
-            'j1pt': hist.Hist(
+            'htm_diff': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Variable(ptbins, name='j1pt', label='AK4 Leading Jet Pt'),
+                hist.axis.Regular(40,0,400, name='htm_diff', label='hadronic top mass [GeV]'),
                 storage=hist.storage.Weight(),
             ),
-            'j1eta': hist.Hist(
+            'ltm_reco': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(35,-3.5,3.5, name='j1eta', label='AK4 Leading Jet Eta'),
+                hist.axis.Regular(40,0,400, name='ltm_reco', label='leptonic top mass [GeV]'),
                 storage=hist.storage.Weight(),
             ),
-            'j1phi': hist.Hist(
+            'ltm_diff': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(35,-3.5,3.5, name='j1phi', label='AK4 Leading Jet Phi'),
+                hist.axis.Regular(40,0,400, name='ltm_diff', label='leptonic top mass [GeV]'),
                 storage=hist.storage.Weight(),
             ),
-            'njets': hist.Hist(
+            'hwm_reco': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.IntCategory([0, 1, 2, 3, 4, 5, 6], name='njets', label='Number of AK4 Jets'),
+                hist.axis.Regular(40,0,400, name='hwm_reco', label='hadronic W mass [GeV]'),
                 storage=hist.storage.Weight(),
             ),
-            'ndflvM': hist.Hist(
+            'hwm_diff': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.IntCategory([0, 1, 2, 3, 4, 5, 6], name='ndflvM', label='AK4 Number of deepFlavor Medium Jets'),
+                hist.axis.Regular(40,0,400, name='hwm_diff', label='hadronic W mass [GeV]'),
                 storage=hist.storage.Weight(),
             ),
-            'mbb': hist.Hist(
+                'htm_std': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(20,0,300, name='mbb', label='Di-b Jet Mass'),
+                hist.axis.Regular(40,0,400, name='htm_std', label='hadronic top mass [GeV]'),
                 storage=hist.storage.Weight(),
             ),
-            'mqq': hist.Hist(
+	    'ltm_std': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(20,0,300, name='mqq', label='Di-q Jet Mass'),
+                hist.axis.Regular(40,0,400, name='ltm_std', label='leptonic top mass [GeV]'),
                 storage=hist.storage.Weight(),
             ),
-            'mlvqq': hist.Hist(
+            'hwm_std': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(20,0,300, name='mlvqq', label='WW Mass'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(40,0,400, name='hwm_std', label='hadronic W mass [GeV]'),
+		storage=hist.storage.Weight(),
             ),
-            'q2pt': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Variable(ptbins, name='q2pt', label='Sub-Leading Quark Jet Pt'),
-                storage=hist.storage.Weight(),
-            ),
-            'mT': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(20,0,600, name='mT', label='Transverse Mass'),
-                storage=hist.storage.Weight(),
-            ),
-            'l1pt': hist.Hist(
+                'l1pt': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
                 hist.axis.Variable(ptbins, name='l1pt', label='Leading Lepton Pt'),
                 storage=hist.storage.Weight(),
@@ -259,8 +250,8 @@ class AnalysisProcessor(processor.ProcessorABC):
                 hist.axis.Regular(64,-3.2,3.2, name='l1phi', label='Leading Lepton Phi'),
                 storage=hist.storage.Weight(),
             ),
-    }
-
+        }
+            
     def process(self, events):
         isData = not hasattr(events, "genWeight")
         if isData:
@@ -553,7 +544,7 @@ class AnalysisProcessor(processor.ProcessorABC):
             behavior=vector.behavior,
         )
         v_e = ak.mask(v_e, ~np.isnan(v_e.pz))
-        
+
         # leptonic top with electrons
         mevb1 = (leading_e + v_e + ak.pad_none(jb_candidates,2,axis=1)[:,0]).mass
         mevb2 = (leading_e + v_e + ak.pad_none(jb_candidates,2,axis=1)[:,1]).mass
@@ -597,10 +588,10 @@ class AnalysisProcessor(processor.ProcessorABC):
                           ) #leptonic candidate 2
 
         nus = ak.where( l_mu & l_e,
-                          ak.where(muge, mmvb2, mevb2),
-	                  ak.where(l_mu, mmvb2, mevb2)
+                          ak.where(muge, v_mu, v_e),
+	                  ak.where(l_mu, v_mu, v_e)
 	                  )
-        
+
         mbqq1 = (ak.pad_none(jb_candidates,2,axis=1)[:,0] + qq).mass #hadronic candidate 1
         mbqq2 = (ak.pad_none(jb_candidates,2,axis=1)[:,1] + qq).mass #hadronic candidate 2
 
@@ -618,13 +609,25 @@ class AnalysisProcessor(processor.ProcessorABC):
             mean = ak.sum(data)/n
             std = np.sqrt((ak.sum((data-mean)**2))/n)
             chi2 = ((data - mean)/std)
-            return chi2, mean
-
-        chi1, mean1 = chi_square(tt.t1) #leptonic top
-        chi2, mean2 = chi_square(tt.t2) #hadronic top
-        chi3, mean3 = chi_square(qq.mass) #hadronic W
+            return chi2, mean, std
+        
+        chi1, mean1, std1 = chi_square(tt.t1) #leptonic top
+        chi2, mean2, std2 = chi_square(tt.t2) #hadronic top
+        chi3, mean3, std3 = chi_square(qq.mass) #hadronic W
         chi_sq_tt = np.sqrt(chi1 + chi2 + chi3)        
 
+        def nu_pt(params, l, nu, W):
+            eta, mWs = params
+            mH = 125.35 
+            nu_t = np.longdouble(((mWs**2 + W.mass**2 - mH**2 - 2(l.px*W.px + l.py*W.py + l.pz*W.pz))/2 - l.energy*W.energy)/(np.cosh(eta)*W.energy + np.cosh(nu.phi)*W.px + np.sinh(nu.phi)*W.py + np.sinh(eta)* W.pz))
+            w = np.longdouble(np.exp((nu.px - nu_t*np.cosh(nu.phi))**2) * np.exp((nu.py - nu_t*np.sinh(nu.phi))**2))        
+            weight = 1/w
+            return weight(params)
+
+        bounds = [(-2.4, 2.4), (15, 60)]
+        result = minimize(nu_pt(l = leading_e, nu = met, W = qq), [0,35], bounds=bounds, method='L-BFGS-B')
+        print(result)
+        #nupt = nu_pt(leading_e, met, qq[ak.argmin(chi_sq_tt,axis=1,keepdims=True)], pm_space.mWs, pm_space.eta)
         
         ###
         #Calculating weights
@@ -828,7 +831,16 @@ class AnalysisProcessor(processor.ProcessorABC):
                 weight = weights.weight()[cut]
             if systematic is None:
                 variables = {
-                    'met':                    nus.pt,
+                    #'met':                    nus.pt,
+                    #'htm_reco':               tt.t1,
+                    #'ltm_reco':      	      tt.t2,
+                    #'hwm_reco':      	      qq.mass,
+                    #'htm_diff':      	      tt.t1 - mean1,
+                    #'ltm_diff':      	      tt.t2 - mean2,
+                    #'hwm_diff':      	      qq.mass - mean3,
+                    #'htm_std':                (tt.t1-mean1)/std,
+                    #'ltm_std':		      (tt.t2-mean2)/std,
+                    #'hwm_std':		      (qq.mass-mean3)/std
                 }
                 
                 for variable in output:
