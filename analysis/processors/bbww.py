@@ -85,7 +85,7 @@ class AnalysisProcessor(processor.ProcessorABC):
                 'HBHENoiseIsoFilter', 
                 'EcalDeadCellTriggerPrimitiveFilter', 
                 'BadPFMuonFilter', 
-                'BadPFMuonDzFilter', 
+                #'BadPFMuonDzFilter', 
                 'eeBadScFilter', 
                 'ecalBadCalibFilter'
                 ]
@@ -192,48 +192,48 @@ class AnalysisProcessor(processor.ProcessorABC):
             ),
             'htm_reco': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,0,400, name='htm_reco', label='hadronic top mass [GeV]'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(50,0,400, name='htm_reco', label='hadronic top mass [GeV]'),
+                #storage=hist.storage.Weight(),
             ),
             'htm_diff': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,0,400, name='htm_diff', label='hadronic top mass [GeV]'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(100,-200,200, name='htm_diff', label='hadronic top mass [GeV]'),
+                #storage=hist.storage.Weight(),
             ),
             'ltm_reco': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,0,400, name='ltm_reco', label='leptonic top mass [GeV]'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(50,0,400, name='ltm_reco', label='leptonic top mass [GeV]'),
+                #storage=hist.storage.Weight(),
             ),
             'ltm_diff': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,0,400, name='ltm_diff', label='leptonic top mass [GeV]'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(100,-200,200, name='ltm_diff', label='leptonic top mass [GeV]'),
+                #storage=hist.storage.Weight(),
             ),
             'hwm_reco': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,0,400, name='hwm_reco', label='hadronic W mass [GeV]'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(40,0,120, name='hwm_reco', label='hadronic W mass [GeV]'),
+                #storage=hist.storage.Weight(),
             ),
             'hwm_diff': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,0,400, name='hwm_diff', label='hadronic W mass [GeV]'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(50,-100,100, name='hwm_diff', label='hadronic W mass [GeV]'),
+                #storage=hist.storage.Weight(),
             ),
                 'htm_std': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,0,400, name='htm_std', label='hadronic top mass [GeV]'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(40, -5,5, name='htm_std', label='hadronic top mass [GeV]'),
+                #storage=hist.storage.Weight(),
             ),
 	    'ltm_std': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,0,400, name='ltm_std', label='leptonic top mass [GeV]'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(40,-5,5, name='ltm_std', label='leptonic top mass [GeV]'),
+                #storage=hist.storage.Weight(),
             ),
             'hwm_std': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,0,400, name='hwm_std', label='hadronic W mass [GeV]'),
-		storage=hist.storage.Weight(),
+                hist.axis.Regular(40,-5,5, name='hwm_std', label='hadronic W mass [GeV]'),
+		#storage=hist.storage.Weight(),
             ),
                 'l1pt': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
@@ -515,7 +515,7 @@ class AnalysisProcessor(processor.ProcessorABC):
         jj_i = jj_i[(j_candidates[jj_i.j1]+ j_candidates[jj_i.j2]).mass<120.0]
         jj_i = jj_i[(j_candidates[jj_i.j2].pt > 20.0)] # subleading pt > 20 for TTbar selection
         
-        qq = j_candidates[jj_i.j1] + j_candidates[jj_i.j2]
+        qq = ak.pad_none(j_candidates[jj_i.j1] + j_candidates[jj_i.j2],3, axis=1)
         
         def neutrino_pz(l,v):
             m_w = 80.379
@@ -592,31 +592,35 @@ class AnalysisProcessor(processor.ProcessorABC):
 	                  ak.where(l_mu, v_mu, v_e)
 	                  )
 
-        mbqq1 = (ak.pad_none(jb_candidates,2,axis=1)[:,0] + qq).mass #hadronic candidate 1
-        mbqq2 = (ak.pad_none(jb_candidates,2,axis=1)[:,1] + qq).mass #hadronic candidate 2
-
+        mbqq1 = ak.pad_none((ak.pad_none(jb_candidates,2,axis=1)[:,0] + qq).mass,3,axis=1) #hadronic candidate 1
+        mbqq2 = ak.pad_none((ak.pad_none(jb_candidates,2,axis=1)[:,1] + qq).mass,3,axis=1) #hadronic candidate 2
+        
         tt1 = ak.cartesian({"t1":mlvb1,"t2":mbqq2},axis=1)
         tt2 = ak.cartesian({"t1":mlvb2,"t2":mbqq1},axis=1)
         b_sel = abs(distance(tt1.t1,tt1.t2,172.5,172.5)) <  abs(distance(tt2.t1,tt2.t2,172.5,172.5)) #pick pair closest to ttbar mass
         c1 = ~ak.is_none(distance(tt1.t1, tt1.t2,172.5,172.5))
         c2 = ~ak.is_none(distance(tt2.t1, tt2.t2,172.5,172.5))
 
-        tt = ak.where( c1 & c2, ak.where(b_sel, tt1 , tt2), ak.where(c1, tt1, tt2))
-
-        def chi_square(data):
+        tt = ak.pad_none(ak.where( c1 & c2, ak.where(b_sel, tt1 , tt2), ak.where(c1, tt1, tt2)),3,axis=1)
+        
+        def chi_square(data,std,mean):
             x_2 = ak.sum(data**2)
             n = ak.count(data[~ak.is_none(data)])
-            mean = ak.sum(data)/n
-            std = np.sqrt((ak.sum((data-mean)**2))/n)
+            #mean = ak.sum(data)/n
+            #std = np.sqrt((ak.sum((data-mean)**2))/n)
             chi2 = ((data - mean)/std)
             return chi2, mean, std
         
-        chi1, mean1, std1 = chi_square(tt.t1) #leptonic top
-        chi2, mean2, std2 = chi_square(tt.t2) #hadronic top
-        chi3, mean3, std3 = chi_square(qq.mass) #hadronic W
-        chi_sq_tt = np.sqrt(chi1 + chi2 + chi3)        
+        chi1, mean1, std1 = chi_square(tt.t1,57.67,220.48 ) #leptonic top
+        chi2, mean2, std2 = chi_square(tt.t2, 58.65, 189.9 ) #hadronic top
+        chi3, mean3, std3 = chi_square(qq.mass,15.307,44.03) #hadronic W
+        #chi_sq_tt = np.sqrt(chi1 + chi2 + chi3)        
+        
+        
+        tt = ak.mask(tt, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) < 55.0)
+        qq = ak.mask(qq, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) < 55.0)
 
-        def nu_pt(params, l, nu, W):
+        '''def nu_pt(params, l, nu, W):
             eta, mWs = params
             mH = 125.35 
             nu_t = np.longdouble(((mWs**2 + W.mass**2 - mH**2 - 2(l.px*W.px + l.py*W.py + l.pz*W.pz))/2 - l.energy*W.energy)/(np.cosh(eta)*W.energy + np.cosh(nu.phi)*W.px + np.sinh(nu.phi)*W.py + np.sinh(eta)* W.pz))
@@ -627,7 +631,7 @@ class AnalysisProcessor(processor.ProcessorABC):
         bounds = [(-2.4, 2.4), (15, 60)]
         result = minimize(nu_pt(l = leading_e, nu = met, W = qq), [0,35], bounds=bounds, method='L-BFGS-B')
         print(result)
-        #nupt = nu_pt(leading_e, met, qq[ak.argmin(chi_sq_tt,axis=1,keepdims=True)], pm_space.mWs, pm_space.eta)
+        #nupt = nu_pt(leading_e, met, qq[ak.argmin(chi_sq_tt,axis=1,keepdims=True)], pm_space.mWs, pm_space.eta)'''
         
         ###
         #Calculating weights
@@ -819,7 +823,7 @@ class AnalysisProcessor(processor.ProcessorABC):
                 ar = ak.to_numpy(ak.fill_none(val, np.nan))
                 return ar
             else:
-                ar = ak.to_numpy(ak.fill_none(val[cut], np.nan))
+                ar = ak.flatten(ak.to_numpy(ak.fill_none(val[cut], np.nan)),axis=None)
                 return ar
                 
         def fill(region, systematic):
@@ -831,16 +835,15 @@ class AnalysisProcessor(processor.ProcessorABC):
                 weight = weights.weight()[cut]
             if systematic is None:
                 variables = {
-                    #'met':                    nus.pt,
-                    #'htm_reco':               tt.t1,
-                    #'ltm_reco':      	      tt.t2,
-                    #'hwm_reco':      	      qq.mass,
-                    #'htm_diff':      	      tt.t1 - mean1,
-                    #'ltm_diff':      	      tt.t2 - mean2,
-                    #'hwm_diff':      	      qq.mass - mean3,
-                    #'htm_std':                (tt.t1-mean1)/std,
-                    #'ltm_std':		      (tt.t2-mean2)/std,
-                    #'hwm_std':		      (qq.mass-mean3)/std
+                    'htm_reco':               ak.pad_none(tt.t1,3,axis=1),
+                    'ltm_reco':      	      ak.pad_none(tt.t2,3,axis=1),
+                    'hwm_reco':      	      ak.pad_none(qq.mass,3,axis=1),
+                    'htm_diff':      	      ak.pad_none((tt.t1 - mean1),3,axis=1),
+                    'ltm_diff':      	      ak.pad_none((tt.t2 - mean2),3,axis=1),
+                    'hwm_diff':      	      ak.pad_none((qq.mass - mean3),3,axis=1),
+                    'htm_std':                ak.pad_none((tt.t1-mean1)/std1,3,axis=1),
+                    'ltm_std':		      ak.pad_none((tt.t2-mean2)/std2,3,axis=1),
+                    'hwm_std':		      ak.pad_none((qq.mass-mean3)/std3,3,axis=1)
                 }
                 
                 for variable in output:
@@ -850,7 +853,7 @@ class AnalysisProcessor(processor.ProcessorABC):
                     output[variable].fill(
                         region=region,
                         **normalized_variable,
-                        weight=weight,
+                        #weight=weight,
                     )
 
         if shift_name is None:
