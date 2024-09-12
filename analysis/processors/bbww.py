@@ -235,20 +235,26 @@ class AnalysisProcessor(processor.ProcessorABC):
                 hist.axis.Regular(40,-5,5, name='hwm_std', label='hadronic W mass [GeV]'),
 		#storage=hist.storage.Weight(),
             ),
-                'l1pt': hist.Hist(
+            'chi1': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Variable(ptbins, name='l1pt', label='Leading Lepton Pt'),
-                storage=hist.storage.Weight(),
+                hist.axis.Regular(50,-5,5, name='chi1', label= r'$\chi_2$ (hadronic top mass)'),
+                #storage=hist.storage.Weight(),
             ),
-            'l1eta': hist.Hist(
+            'chi2': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(48,-2.4,2.4, name='l1eta', label='Leading Lepton Eta'),
-                storage=hist.storage.Weight(),
+		hist.axis.Regular(50,-5,5, name='chi2', label= r'$\chi_2$ (leptonic top mass)'),
+                #storage=hist.storage.Weight(),
             ),
-            'l1phi': hist.Hist(
+            'chi3': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(64,-3.2,3.2, name='l1phi', label='Leading Lepton Phi'),
-                storage=hist.storage.Weight(),
+		hist.axis.Regular(50,-5,5, name='chi3', label= r'$\chi_2$ (hadronic W mass)'),
+                #storage=hist.storage.Weight(),
+            ),
+            'chi': hist.Hist(
+                hist.axis.StrCategory([], name='region', growth=True),
+                hist.axis.Regular(50,-5,5, name='chi', label= r'$\chi_2$ (total chi square)'),
+                #storage=hist.storage.Weight(),                                 
+
             ),
         }
             
@@ -525,12 +531,10 @@ class AnalysisProcessor(processor.ProcessorABC):
             C = l.energy**2 - l.pz**2
             discriminant = (2 * A * l.pz)**2 - 4 * (B - A**2) * C
             # avoiding imaginary solutions
-            #sqrt_discriminant = ak.where(discriminant >= 0, np.sqrt(discriminant), np.nan)
-            sqrt_discriminant = ak.where(discriminant >= 0, np.nan, v.pt)
+            sqrt_discriminant = ak.where(discriminant >= 0, np.sqrt(discriminant), np.nan)
             pz_1 = (2*A*l.pz + sqrt_discriminant)/(2*C)
             pz_2 = (2*A*l.pz - sqrt_discriminant)/(2*C)
-            #return ak.where(abs(pz_1) < abs(pz_2), pz_1, pz_2)
-            return sqrt_discriminant
+            return ak.where(abs(pz_1) < abs(pz_2), pz_1, pz_2)
             
         #top reconstruction
         v_e = ak.zip(
@@ -608,17 +612,18 @@ class AnalysisProcessor(processor.ProcessorABC):
             n = ak.count(data[~ak.is_none(data)])
             #mean = ak.sum(data)/n
             #std = np.sqrt((ak.sum((data-mean)**2))/n)
-            chi2 = ((data - mean)/std)
+            chi2 = ((data - mean)/std)**2
             return chi2, mean, std
+
+        chi1, mean1, std1 = chi_square(tt.t1,47.59,194.93 ) #leptonic top
+        chi2, mean2, std2 = chi_square(tt.t2, 44.95, 171.55 ) #hadronic top    
+        chi3, mean3, std3 = chi_square(qq.mass,23.56,73.9) #hadronic W     
+        chi_sq_tt = np.sqrt(chi1 + chi2 + chi3)
+        chi_sq_tt = chi_sq_tt[ak.argmin(chi_sq_tt,axis=1,keepdims=True)]
         
-        chi1, mean1, std1 = chi_square(tt.t1,57.67,220.48 ) #leptonic top
-        chi2, mean2, std2 = chi_square(tt.t2, 58.65, 189.9 ) #hadronic top
-        chi3, mean3, std3 = chi_square(qq.mass,15.307,44.03) #hadronic W
-        #chi_sq_tt = np.sqrt(chi1 + chi2 + chi3)        
         
-        
-        tt = ak.mask(tt, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) < 55.0)
-        qq = ak.mask(qq, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) < 55.0)
+        #tt = ak.mask(tt, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) < 55.0)
+        #qq = ak.mask(qq, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) < 55.0)
 
         '''def nu_pt(params, l, nu, W):
             eta, mWs = params
@@ -843,7 +848,12 @@ class AnalysisProcessor(processor.ProcessorABC):
                     'hwm_diff':      	      ak.pad_none((qq.mass - mean3),3,axis=1),
                     'htm_std':                ak.pad_none((tt.t1-mean1)/std1,3,axis=1),
                     'ltm_std':		      ak.pad_none((tt.t2-mean2)/std2,3,axis=1),
-                    'hwm_std':		      ak.pad_none((qq.mass-mean3)/std3,3,axis=1)
+                    'hwm_std':		      ak.pad_none((qq.mass-mean3)/std3,3,axis=1),
+                    'chi1':                   ak.pad_none(ak.singletons(np.sqrt(chi1[:,0])),3,axis=1),
+                    'chi2':                   ak.pad_none(np.sqrt(chi2),3,axis=1),
+                    'chi3':                   ak.pad_none(np.sqrt(chi3),3,axis=1),
+                    'chi':                    ak.pad_none(chi_sq_tt,3,axis=1),
+
                 }
                 
                 for variable in output:
