@@ -1,31 +1,33 @@
 import numpy as np
 import awkward as ak
 from coffea.nanoevents.methods import vector
-import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+from scipy.optimize import dual_annealing
+import random
 
 leps = ak.zip(
     {
-        "x": [37.2, 58.8, 33.5, 37, 43.6, 20.6], 
-        "y": [22, -165, 59.2, 19.9, 36.1, 32.7],  
-        "z": [-169, -128, -14.9, 13.8, 0.174, -36],     
-        "t": [174, 217, 69.7, 44.2, 56.6, 52.8]
+        "x": [37.2, 58.8, 33.5, -146, 43.6, 20.6], 
+        "y": [22, -165, 59.2, -75.4, 36.1, 32.7],  
+        "z": [-169, -128, -14.9, -15.3, 0.174, -36],     
+        "t": [174, 217, 69.7, 165, 56.6, 52.8]
     },
     with_name="LorentzVector",
     behavior = vector.behavior,
 )
 
 nu = ak.Array({
-    "px": [3.21, -9.11, -39.8, 18.6, -27.4, 159], 
-    "py": [-21.8, -6.36, 54.3, -6.63, -29.1, 1.61],     
-    "phi" : [-1.42, -2.53, 2.2, -0.342, -2.33, 0.0102]})  
+    "px": [0.715, -24.4, -59.9, -114, 2.98, 158], 
+    "py": [-12.2, 0.714, 56.5, -6.01, -27.3, 4.63],     
+    "phi" : [-1.51, 3.11, 2.39, -3.09, -1.46, 0.0293]})  
 
 #these are gen Ws
 qq = ak.zip(
     {
-        "x": [42.2, 8.57, -8.77, 39, 77.3, 69.7], 
-        "y": [20.7, -54.2, 40.3, 20.6, 34.7, 19.1],  
-        "z": [-330, -19.1, -39.6, -8.04, -6.13, -67.7],     
-        "t": [336, 67.9, 64.8, 55.8, 90.5, 103]
+        "x": [15.6, 52.2, -16.1, -168, 95.4, 139], 
+        "y": [48.2, -157, 138, -63.3, 80.8, 33.2],  
+        "z": [-495, -132, -22.1, 11.5, 51.3, -294],     
+        "t": [504, 226, 163, 198, 156, 337]
     },
     with_name="LorentzVector",
     behavior = vector.behavior,
@@ -33,10 +35,7 @@ qq = ak.zip(
 
 def nu_pt(eta_mWs, l, nu, W):
     mW = 80.36
-    
-    eta = eta_mWs.eta
-    mWs = eta_mWs.mWs
-    
+    eta, mWs = eta_mWs
     mH = 125.35
     scale_factor = mW / W.mass
         
@@ -50,35 +49,41 @@ def nu_pt(eta_mWs, l, nu, W):
     w = (-np.exp(-(nu.px - nu_t*np.cos(nu.phi))**2/10000) * np.exp(-(nu.py - nu_t*np.sin(nu.phi))**2/10000))
     return w, nu_t
 
-def optimize(leptons, met, W):
-    eta = np.arange(-6,6,0.1) #generate eta space
-    mWs = np.arange(0,55,0.1)
-    sample_space = ak.cartesian({"eta": eta, "mWs": mWs},axis=0)
-    sample_space = ak.Array([sample_space] * len(met))
-
-    #extract weights and inferred pT
-    weights, pt = nu_pt(sample_space, leptons, met, W)
+def run_minimization(l, nu, W):
+    nu_t_reco = []
+    initial_guess = [0, random.randint(5,60)]
+    bounds = [(-6, 6), (5, 60)]
+    final_nu_t = None
     
-    #select minimum weights and corresponding eta, pT
+    def objective_function(eta_mWs):
+        nonlocal final_nu_t
+        w, nu_t = nu_pt(eta_mWs, l, nu, W)
+        final_nu_t = nu_t
+        return w
 
-    max_weights = weights[ak.argsort(weights, axis=1)]
-    max_pt = pt[ak.argsort(weights, axis=1)] 
-    max_eta = sample_space[ak.argsort(weights, axis=1)].eta
+    result = dual_annealing(objective_function, bounds=bounds)
+    return result.x, final_nu_t
+                
 
-    return max_weights, max_pt, max_eta
+args = [ (l, met, W) for l, met, W in zip(leps, nu, qq)]
+results = [run_minimization(l, met, W) for l, met, W in args]
 
-weights, pt, eta = optimize(leps, nu, qq)
+opt = ak.Array([res[0] for res in results])
+pt = ak.Array([res[1] for res in results])
+eta = opt[:,0]
+mWs = opt[:,1]
 
 #create reconstructed neutrino four vector
 nu_reco = ak.zip(
     {
         "x": nu.px,
         "y": nu.py,
-        "z": np.sqrt(nu.px**2 + nu.py**2) * np.sinh(eta[:,0]),
-        "t": np.sqrt(nu.px**2 + nu.py**2 + (np.sqrt(nu.px**2 + nu.py**2) * np.sinh(eta[:,0]))**2 )  ,
+        "z": np.sqrt(nu.px**2 + nu.py**2) * np.sinh(eta),
+        "t": np.sqrt(nu.px**2 + nu.py**2 + (np.sqrt(nu.px**2 + nu.py**2) * np.sinh(eta))**2 )  ,
     },
     with_name="LorentzVector",
     behavior=vector.behavior,
 )
 
+print(eta, mWs, pt)
 print((leps+nu_reco+qq).mass)
