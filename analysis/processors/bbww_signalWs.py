@@ -14,8 +14,8 @@ from coffea.util import load, save
 from optparse import OptionParser
 from coffea.nanoevents.methods import vector
 import gzip
-from scipy.optimize import minimize
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from scipy.optimize import dual_annealing
+import random
 
 def update(events, collections):
     """Return a shallow copy of events array with some collections swapped out"""
@@ -191,11 +191,17 @@ class AnalysisProcessor(processor.ProcessorABC):
                 hist.axis.Regular(50,-6,6, name='met', label=r'$\eta$'),
                 storage=hist.storage.Weight(),
             ),
-                'Ws': hist.Hist(
+            'Ws_good': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-		hist.axis.Regular(100,0,400, name='Ws', label='mass [GeV]'),
+		hist.axis.Regular(100,0,400, name='Ws_good', label='mass [GeV]'),
                 storage=hist.storage.Weight(),
-            )
+                ),
+            'Ws_bad': hist.Hist(
+                hist.axis.StrCategory([], name='region', growth=True),
+	        hist.axis.Regular(100,0,400, name='Ws_bad', label='mass [GeV]'),
+		storage=hist.storage.Weight(),
+	        ),
+
         }
             
     def process(self, events):
@@ -224,7 +230,7 @@ class AnalysisProcessor(processor.ProcessorABC):
             return jets
         
         jets = jet_factory[thekey].build(add_jec_variables(events.Jet, events.fixedGridRhoFastjetAll), jec_cache)
-        met = met_factory.build(events.MET, jets, {})
+        met = events.DeepMETResolutionTune
 
         shifts = [({"Jet": jets,"MET": met}, None)]
         if self._systematics:
@@ -482,6 +488,7 @@ class AnalysisProcessor(processor.ProcessorABC):
             if (W is None) | (l.phi is None) :
                 eta, mWs = eta_mWs
                 w = 5000
+                nu_t = None
             else:
                 eta, mWs = eta_mWs
                 mH = 125.35
@@ -494,42 +501,45 @@ class AnalysisProcessor(processor.ProcessorABC):
                 W_energy = W.energy * scale_factor
 
                 nu_t = -((mWs**2 + mW**2 - mH**2 - 2*(l.px*W_px + l.py*W_py + l.pz*W_pz))/2 - l.energy*W_energy)/(np.cosh(eta)*W_energy + np.cos(nu.phi)*W_px + np.sin(nu.phi)*W_py + np.sinh(eta)* W_pz)
-                w = (-np.exp(-(nu.px - nu_t*np.cos(nu.phi))**2/10000) * np.exp(-(nu.py - nu_t*np.sin(nu.phi))**2/10000))
+                w = (-np.exp(-(nu.pt*np.cos(nu.phi) - nu_t*np.cos(nu.phi))**2/10000) * np.exp(-(nu.pt * np.sin(nu.phi) - nu_t*np.sin(nu.phi))**2/10000))
             if w is None:
                 w = 5000
-            return w
-        
-        initial_guess = [0, 45]
-        bounds = [(-4, 4), (15,60)]
-        print(nu_pt(initial_guess, leading_ls, met, qq[:,0]))
-        
-        def run_minimization(l, nu, W):
-            initial_guess = [0, 35]
-            bounds = [(-2.4, 2.4), (15, 60)]
-            result = minimize(lambda p: nu_pt(p, l, nu, W), initial_guess, bounds=bounds, method='L-BFGS-B')
-            return result
+            return w, nu_t
                 
+        def run_minimization(l, nu, W):
+            initial_guess = [0, random.randint(5,60)]
+            bounds = [(-6, 6), (5, 60)]
+            final_nu_t = None
+    
+            def objective_function(eta_mWs):
+                nonlocal final_nu_t
+                w, nu_t = nu_pt(eta_mWs, l, nu, W)
+                final_nu_t = nu_t
+                return w
+
+            result = dual_annealing(objective_function, bounds=bounds)
+            return result.x, final_nu_t                
 
         args1 = [ (l, nu, W) for l, nu, W in zip(leading_ls, met, qq[:,0])]
         args2 = [ (l, nu, W) for l, nu, W in zip(leading_ls, met, qq[:,1])]
         args3 = [ (l, nu, W) for l, nu, W in zip(leading_ls, met, qq[:,2])]
-        opt1 = ak.Array([run_minimization(l, nu, W).x for l, nu, W in args1])
-        opt2 = ak.Array([run_minimization(l, nu, W).x for l, nu, W in args2])
-        opt3 = ak.Array([run_minimization(l, nu, W).x for l, nu, W in args3])
+        results1 = [run_minimization(l, nu, W) for l, nu, W in args1]
+        results2 = [run_minimization(l, nu, W) for l, nu, W in args2]
+        results3 = [run_minimization(l, nu, W) for l, nu, W in args3]
 
-        eta = ak.concatenate([ak.singletons(opt1[:,0]),ak.singletons(opt2[:,0]),ak.singletons(opt3[:,0])],axis=1)
-        mWs = ak.concatenate([ak.singletons(opt1[:,1]),ak.singletons(opt2[:,1]),ak.singletons(opt3[:,1])],axis=1)
-        eta = ak.mask(eta,(~ak.is_none(qq.pt) & ~ak.is_none(leading_ls)) )
-        mWs = ak.mask(mWs,(~ak.is_none(qq.pt) & ~ak.is_none(leading_ls)))
-        eta = ak.mask(eta, (abs(eta) > 0))
+        opt1 = ak.Array([res[0] for res in results1])
+        opt2 = ak.Array([res[0] for res in results2])
+        opt3 = ak.Array([res[0] for res in results3])
+        eta = ak.concatenate([ak.singletons(opt1[:,0]),ak.singletons(opt2[:,0]), ak.singletons(opt3[:,0])], axis=1)
+        mWs = ak.concatenate([ak.singletons(opt1[:,1]),ak.singletons(opt2[:,1]), ak.singletons(opt3[:,1])], axis=1)
+
         eta = ak.mask(eta, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) >= 55.0)
-        mWs = ak.mask(mWs, (abs(eta) > 0))
         mWs = ak.mask(mWs, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) >= 55.0)
 
         v_reco = ak.zip(
             {
-                "x": met.px,
-                "y": met.py,
+                "x": met.pt * np.cos(met.phi),
+                "y": met.pt * np.sin(met.phi),
                 "z": met.pt*np.sinh(eta),
                 "t": np.sqrt(met.pt**2+(met.pt*np.sinh(eta))**2) ,
             },
@@ -537,7 +547,24 @@ class AnalysisProcessor(processor.ProcessorABC):
             behavior=vector.behavior,
         )
         mh = ak.mask((v_reco+leading_ls+qq).mass ,ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) >= 55.0)
-        #nupt = nu_pt(leading_e, met, qq[ak.argmin(chi_sq_tt,axis=1,keepdims=True)], pm_space.mWs, pm_space.eta)
+        print(mh, (v_reco+leading_ls+qq).mass)
+
+        def nu_pz(l,nu,W):
+            m_H = 125.35
+            A = -(l.px**2+l.py**2+l.pz**2 + 2*(l.px*W.px+l.py*W.py+l.pz*W.pz)+W.px**2+W.py**2+W.pz**2) - 2*l.px*nu.pt * np.cos(nu.phi) -2*l.py*nu.pt * np.sin(nu.phi)-2*W.px*nu.pt * np.cos(nu.phi)- 2*W.py*nu.pt * np.sin(nu.phi) + (-m_H**2 + (l.energy + W.energy)**2)
+            B = (nu.pt * np.cos(nu.phi)**2+nu.pt * np.sin(nu.phi)**2)*4*(l.energy+W.energy)**2
+            C = 4*(-(l.energy+W.energy)**2 + (l.pz+W.pz)**2)
+            discriminant = (4 * A * (l.pz+W.pz))**2 - 4 * (A**2 - B) * C
+            # avoiding imaginary solutions
+            sqrt_discriminant = ak.where(discriminant >= 0, np.sqrt(discriminant),np.nan)
+            pz_1 = (4*A*(l.pz+W.pz) + sqrt_discriminant)/(2*C)
+            pz_2 = (4*A*(l.pz+W.pz) - sqrt_discriminant)/(2*C)
+            pz =  ak.where(abs(pz_1) > abs(pz_2), pz_1, pz_2)                  
+            return pz
+
+        met_pz = nu_pz(leading_ls, met, qq)
+        mh_good = ak.mask(mh, ~np.isnan(met_pz))
+        mh_bad = ak.mask(mh, np.isnan(met_pz))
         
         ###
         #Calculating weights
@@ -745,7 +772,8 @@ class AnalysisProcessor(processor.ProcessorABC):
                 weight = weights.weight()[cut]
             if systematic is None:
                 variables = {
-                    'Ws':      	   ak.pad_none(mh,3,axis=1), 
+                    'Ws_good':      	   ak.pad_none(mh_good,3,axis=1),
+                    'Ws_bad':              ak.pad_none(mh_bad,3,axis=1),
                     'met':         ak.pad_none(ak.firsts(gen[gen.is_nue|gen.is_numu].eta)-eta,3,axis=1)
                 }
                 
