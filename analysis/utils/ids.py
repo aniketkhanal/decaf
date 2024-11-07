@@ -197,7 +197,7 @@ def isGoodAK4(j, year):
     mask = (
         (j.pt > 30) 
         & (abs(j.eta) < 2.4) 
-        & ((j.jetId & 2) == 2)
+        & (j.jetId > 1)
         & ((j.pt >= 50) | ((j.puId & puId_value) == puId_value))
         )
 
@@ -210,9 +210,9 @@ def isSoftAK4(j, year):
         return puId
 
     mask = (
-        (j.pt > 15) 
+        (j.pt > 8) 
         & (abs(j.eta) < 2.4) 
-        & ((j.jetId & 2) == 2)
+        & (j.jetId > 1)
         & (j.puIdDisc > puId_cut_low_pt(j.pt))
         )
 
