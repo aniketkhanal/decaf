@@ -190,24 +190,24 @@ class AnalysisProcessor(processor.ProcessorABC):
                 hist.axis.Regular(30,0,300, name='met', label='MET'),
                 storage=hist.storage.Weight(),
             ),
-            'hbb_reco': hist.Hist(
+            'htm_reco': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,400, name='hbb_reco', label='hadronic top mass [GeV]'),
+                hist.axis.Regular(50,0,400, name='htm_reco', label='hadronic top mass [GeV]'),
                 #storage=hist.storage.Weight(),
             ),
-            'hbb_diff': hist.Hist(
+            'htm_diff': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(100,-200,200, name='hbb_diff', label='hadronic top mass [GeV]'),
+                hist.axis.Regular(100,-200,200, name='htm_diff', label='hadronic top mass [GeV]'),
                 #storage=hist.storage.Weight(),
             ),
-            'hWW_reco': hist.Hist(
+            'ltm_reco': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,400, name='hWW_reco', label='leptonic top mass [GeV]'),
+                hist.axis.Regular(50,0,400, name='ltm_reco', label='leptonic top mass [GeV]'),
                 #storage=hist.storage.Weight(),
             ),
-            'hWW_diff': hist.Hist(
+            'ltm_diff': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(100,-200,200, name='hWW_diff', label='leptonic top mass [GeV]'),
+                hist.axis.Regular(100,-200,200, name='ltm_diff', label='leptonic top mass [GeV]'),
                 #storage=hist.storage.Weight(),
             ),
             'hwm_reco': hist.Hist(
@@ -220,14 +220,14 @@ class AnalysisProcessor(processor.ProcessorABC):
                 hist.axis.Regular(50,-100,100, name='hwm_diff', label='hadronic W mass [GeV]'),
                 #storage=hist.storage.Weight(),
             ),
-            'hbb_std': hist.Hist(
+                'htm_std': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40, -5,5, name='hbb_std', label='hadronic top mass [GeV]'),
+                hist.axis.Regular(40, -5,5, name='htm_std', label='hadronic top mass [GeV]'),
                 #storage=hist.storage.Weight(),
             ),
-	    'hWW_std': hist.Hist(
+	    'ltm_std': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(40,-5,5, name='hWW_std', label='leptonic top mass [GeV]'),
+                hist.axis.Regular(40,-5,5, name='ltm_std', label='leptonic top mass [GeV]'),
                 #storage=hist.storage.Weight(),
             ),
             'hwm_std': hist.Hist(
@@ -237,22 +237,22 @@ class AnalysisProcessor(processor.ProcessorABC):
             ),
             'chi1': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi1', label= r'$\chi_2$ (hadronic top mass)'),
+                hist.axis.Regular(50,-5,5, name='chi1', label= r'$\chi_2$ (hadronic top mass)'),
                 #storage=hist.storage.Weight(),
             ),
             'chi2': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-		hist.axis.Regular(50,0,5, name='chi2', label= r'$\chi_2$ (leptonic top mass)'),
+		hist.axis.Regular(50,-5,5, name='chi2', label= r'$\chi_2$ (leptonic top mass)'),
                 #storage=hist.storage.Weight(),
             ),
             'chi3': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-		hist.axis.Regular(50,0,5, name='chi3', label= r'$\chi_2$ (hadronic W mass)'),
+		hist.axis.Regular(50,-5,5, name='chi3', label= r'$\chi_2$ (hadronic W mass)'),
                 #storage=hist.storage.Weight(),
             ),
             'chi': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi', label= r'$\chi_2$ (total chi square)'),
+                hist.axis.Regular(50,-5,5, name='chi', label= r'$\chi_2$ (total chi square)'),
                 #storage=hist.storage.Weight(),                                 
 
             ),
@@ -284,7 +284,7 @@ class AnalysisProcessor(processor.ProcessorABC):
             return jets
         
         jets = jet_factory[thekey].build(add_jec_variables(events.Jet, events.fixedGridRhoFastjetAll), jec_cache)
-        met = events.DeepMETResolutionTune
+        met = met_factory.build(events.MET, jets, {})
 
         shifts = [({"Jet": jets,"MET": met}, None)]
         if self._systematics:
@@ -360,7 +360,7 @@ class AnalysisProcessor(processor.ProcessorABC):
         npv = events.PV.npvsGood 
         run = events.run
         #calomet = events.CaloMET
-        met = events.DeepMETResolutionTune
+        met = events.MET
         met['pt'] , met['phi'] = get_met_xy_correction(self._year, npv, run, met.pt, met.phi, isData)
 
         ###
@@ -509,7 +509,7 @@ class AnalysisProcessor(processor.ProcessorABC):
         ###
 
         j_candidates = j_soft[ak.argsort(j_soft.particleNetAK4_B, axis=1, ascending=False)] #particleNetAK4_B btagPNetB 
-        jb_candidates = ak.pad_none(j_candidates[:,:2], 2,axis=1) # two b-jets
+        jb_candidates = j_candidates[:,:2] # two b-jets
         j_candidates = j_candidates[:,2:]
         
         j_candidates = j_candidates[ak.argsort(j_candidates.particleNetAK4_QvsG, axis=1, ascending=False)]#particleNetAK4_QvsG btagPNetQvG
@@ -518,101 +518,117 @@ class AnalysisProcessor(processor.ProcessorABC):
         
         jj_i = ak.argcombinations(j_candidates,2,fields=["j1","j2"])
         jj_i = jj_i[(j_candidates[jj_i.j1]+ j_candidates[jj_i.j2]).eta<2.0]
-        jj_i = jj_i[(j_candidates[jj_i.j1]+ j_candidates[jj_i.j2]).mass<120.0] #dijet cuts
+        jj_i = jj_i[(j_candidates[jj_i.j1]+ j_candidates[jj_i.j2]).mass<120.0]
+        jj_i = jj_i[(j_candidates[jj_i.j2].pt > 20.0)] # subleading pt > 20 for TTbar selection
         
         qq = ak.pad_none(j_candidates[jj_i.j1] + j_candidates[jj_i.j2],3, axis=1)
-        #qq = ak.mask(qq, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0)
         
-        def nu_pz(l,nu,W):
-            m_H = 125.35
-        
-            A = m_H**2 - W.mass**2 - l.mass**2 - 2*l.energy*W.energy + 2*(l.px*W.px + l.py*W.py + l.pz*W.pz) + 2*(l.px*nu.pt * np.cos(nu.phi) + l.py*nu.pt * np.sin(nu.phi) + W.px*nu.pt * np.cos(nu.phi) + W.py*nu.pt * np.sin(nu.phi))
-            B = A**2/4 - (l.energy + W.energy)**2*((nu.pt * np.cos(nu.phi))**2 + (nu.pt * np.sin(nu.phi))**2)
-            C = (l.pz + W.pz)**2 - (l.energy + W.energy)**2
-        
-            discriminant = A**2*(l.pz+W.pz)**2 - 4*B*C
-            sqrt_discriminant = ak.where(discriminant >= 0, np.sqrt(discriminant),np.nan) # avoiding imaginary solutions
-        
-            pz_1 = (-A*(l.pz + W.pz) + sqrt_discriminant)/(2*C)
-            pz_2 = (-A*(l.pz + W.pz) - sqrt_discriminant)/(2*C)
-            pz =  ak.where(abs(pz_1) < abs(pz_2), pz_1, pz_2)                  
-        
-            return pz
-   
+        def neutrino_pz(l,v):
+            m_w = 80.379
+            m_l = l.mass            
+            A = (l.px*v.px+l.py*v.py) + (m_w**2 - m_l**2)/2
+            B = l.energy**2*(v.px**2+v.py**2)
+            C = l.energy**2 - l.pz**2
+            discriminant = (2 * A * l.pz)**2 - 4 * (B - A**2) * C
+            # avoiding imaginary solutions
+            sqrt_discriminant = ak.where(discriminant >= 0, np.sqrt(discriminant), np.nan)
+            pz_1 = (2*A*l.pz + sqrt_discriminant)/(2*C)
+            pz_2 = (2*A*l.pz - sqrt_discriminant)/(2*C)
+            return ak.where(abs(pz_1) < abs(pz_2), pz_1, pz_2)
             
-        #Higgs reconstruction
+        #top reconstruction
         v_e = ak.zip(
             {
-	        "x": met.pt * np.cos(met.phi),
-                "y": met.pt * np.sin(met.phi),
-                "z": nu_pz(leading_e, met, qq),
-                "t": np.sqrt(met.pt**2 + nu_pz(leading_e, met, qq)**2)
+                "x": met.px,
+                "y": met.py,
+                "z": neutrino_pz(leading_e, met),
+                "t": np.sqrt(met.pt**2+neutrino_pz(leading_e, met)**2) ,
             },
             with_name="LorentzVector",
             behavior=vector.behavior,
-	        )
+        )
+        v_e = ak.mask(v_e, ~np.isnan(v_e.pz))
 
+        # leptonic top with electrons
+        mevb1 = (leading_e + v_e + ak.pad_none(jb_candidates,2,axis=1)[:,0]).mass
+        mevb2 = (leading_e + v_e + ak.pad_none(jb_candidates,2,axis=1)[:,1]).mass
+            
         v_mu = ak.zip(
             {
-                "x": met.pt * np.cos(met.phi),
-		"y": met.pt * np.sin(met.phi),
-                "z": nu_pz(leading_mu, met, qq),
-                "t": np.sqrt(met.pt**2 + nu_pz(leading_mu, met, qq)**2)
+                "x": met.px,
+                "y": met.py,
+                "z": neutrino_pz(leading_mu, met),
+                "t": np.sqrt(met.pt**2+neutrino_pz(leading_mu, met)**2) ,
             },
             with_name="LorentzVector",
             behavior=vector.behavior,
-	        )
-        
+        )
         v_mu = ak.mask(v_mu, ~np.isnan(v_mu.pz))
-        v_e = ak.mask(v_e, ~np.isnan(v_e.pz)) #avoid calculations for imaginary solutions
         
-        # H -> lvqq with electrons and muons
-        mevqq = (leading_e + v_e + qq).mass
-        mmuvqq = (leading_mu + v_e + qq).mass
-
-        # H -> bb
-        mbb = (jb_candidates[:,0] + jb_candidates[:,1]).mass
-        #mbb = ak.mask(mbb, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0)
+        #leptonic top with muons
+        mmvb1 = (leading_mu + v_mu + ak.pad_none(jb_candidates,2,axis=1)[:,0]).mass
+        mmvb2 = (leading_mu + v_mu + ak.pad_none(jb_candidates,2,axis=1)[:,1]).mass
         
-        #transverse mass
         mT = {
-            'esr'  : np.sqrt(2*leading_e.pt*met.pt*(1-np.cos(met.phi - leading_e.phi))),
-            'msr'  : np.sqrt(2*leading_mu.pt*met.pt*(1-np.cos(met.phi - leading_mu.phi)))
+            'esr'  : np.sqrt(2*leading_e.pt*met.pt*(1-np.cos(met.delta_phi(leading_e.T)))),
+            'msr'  : np.sqrt(2*leading_mu.pt*met.pt*(1-np.cos(met.delta_phi(leading_mu.T))))
         }
-        
+
+        def distance(x1,y1,x2,y2):
+            return np.sqrt((x2-x1)**2+(y2-y1)**2)
+
         l_mu = ~ak.is_none(leading_mu.pt)
         l_e = ~ak.is_none(leading_e.pt)
         muge = leading_mu.pt > leading_e.pt
 
-        mlvqq = ak.where(l_mu & l_e,
-                         ak.where(muge, mmuvqq, mevqq),
-                         ak.where(l_mu, mmuvqq, mevqq)
-                         ) #select lepton with highest pT
+        mlvb1 = ak.where(l_mu & l_e,
+                         ak.where(muge, mmvb1, mevb1),
+                         ak.where(l_mu, mmvb1, mevb1)
+                         ) #leptonic candidate 1
 
-        mT = ak.where(l_mu & l_e,
-                         ak.where(muge, mT['msr'], mT['esr']),
-                         ak.where(l_mu, mT['msr'], mT['esr'])
-                         )
-        
+        mlvb2 = ak.where( l_mu & l_e,
+                          ak.where(muge, mmvb2, mevb2),
+                          ak.where(l_mu, mmvb2, mevb2)
+                          ) #leptonic candidate 2
+
         nus = ak.where( l_mu & l_e,
                           ak.where(muge, v_mu, v_e),
 	                  ak.where(l_mu, v_mu, v_e)
 	                  )
 
-        def chi_square(data,mean,std):
+        mbqq1 = ak.pad_none((ak.pad_none(jb_candidates,2,axis=1)[:,0] + qq).mass,3,axis=1) #hadronic candidate 1
+        mbqq2 = ak.pad_none((ak.pad_none(jb_candidates,2,axis=1)[:,1] + qq).mass,3,axis=1) #hadronic candidate 2
+        
+        tt1 = ak.cartesian({"t1":mlvb1,"t2":mbqq2},axis=1)
+        tt2 = ak.cartesian({"t1":mlvb2,"t2":mbqq1},axis=1)
+        b_sel = abs(distance(tt1.t1,tt1.t2,172.5,172.5)) <  abs(distance(tt2.t1,tt2.t2,172.5,172.5)) #pick pair closest to ttbar mass
+        c1 = ~ak.is_none(distance(tt1.t1, tt1.t2,172.5,172.5))
+        c2 = ~ak.is_none(distance(tt2.t1, tt2.t2,172.5,172.5))
+
+        tt = ak.pad_none(ak.where( c1 & c2, ak.where(b_sel, tt1 , tt2), ak.where(c1, tt1, tt2)),3,axis=1)
+        
+        def chi_square(data,std,mean):
             x_2 = ak.sum(data**2)
             n = ak.count(data[~ak.is_none(data)])
+            #mean = ak.sum(data)/n
+            #std = np.sqrt((ak.sum((data-mean)**2))/n)
             chi2 = ((data - mean)/std)**2
             return chi2, mean, std
 
-        qq = ak.mask(qq, abs(mlvqq - 125.35) < 5) #dropping the 'tail' of Higgs mass plot
-
-        chi1, mean1, std1 = chi_square(mbb,115.33, 46.29) # H -> bb
-        chi2, mean2, std2 = chi_square(mT, 58.87, 37.35) # H -> WW             
-        chi3, mean3, std3 = chi_square(qq.mass,66.89, 10.98) #hadronic W*
-
+        chi1, mean1, std1 = chi_square(tt.t1,47.59,194.93 ) #leptonic top
+        chi2, mean2, std2 = chi_square(tt.t2, 44.95, 171.55 ) #hadronic top    
+        chi3, mean3, std3 = chi_square(qq.mass,23.56,73.9) #hadronic W     
         chi_sq_tt = np.sqrt(chi1 + chi2 + chi3)
+        #chi_sq_tt = ak.mask(chi_sq_tt, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) >=55.0)
         chi_sq_tt = chi_sq_tt[ak.argmin(chi_sq_tt,axis=1,keepdims=True)]
+        
+        #tt = ak.mask(tt, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) >=55.0)
+        #qq = ak.mask(qq, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) >=55.0)
+        #chi1 = ak.mask(chi1, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) >=55.0)
+        #chi2 = ak.mask(chi2, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) >=55.0)
+        #chi3 = ak.mask(chi3, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass,3,axis=1) >=55.0)
+
+        
         
         ###
         #Calculating weights
@@ -816,17 +832,17 @@ class AnalysisProcessor(processor.ProcessorABC):
                 weight = weights.weight()[cut]
             if systematic is None:
                 variables = {
-                    'hbb_reco':               ak.pad_none(ak.singletons(mbb),3,axis=1),
-                    'hWW_reco':      	      ak.pad_none(ak.singletons(mT),3,axis=1),
+                    'htm_reco':               ak.pad_none(tt.t1,3,axis=1),
+                    'ltm_reco':      	      ak.pad_none(tt.t2,3,axis=1),
                     'hwm_reco':      	      ak.pad_none(qq.mass,3,axis=1),
-                    'hbb_diff':      	      ak.pad_none((ak.singletons(mbb) - mean1),3,axis=1),
-                    'hWW_diff':      	      ak.pad_none((ak.singletons(mT) - mean2),3,axis=1),
+                    'htm_diff':      	      ak.pad_none((tt.t1 - mean1),3,axis=1),
+                    'ltm_diff':      	      ak.pad_none((tt.t2 - mean2),3,axis=1),
                     'hwm_diff':      	      ak.pad_none((qq.mass - mean3),3,axis=1),
-                    'hbb_std':                ak.pad_none((ak.singletons(mbb)-mean1)/std1,3,axis=1),
-                    'hWW_std':		      ak.pad_none((ak.singletons(mT)-mean2)/std2,3,axis=1),
+                    'htm_std':                ak.pad_none((tt.t1-mean1)/std1,3,axis=1),
+                    'ltm_std':		      ak.pad_none((tt.t2-mean2)/std2,3,axis=1),
                     'hwm_std':		      ak.pad_none((qq.mass-mean3)/std3,3,axis=1),
-                    'chi1':                   ak.pad_none(np.sqrt(ak.singletons(chi1)),3,axis=1),
-                    'chi2':                   ak.pad_none(np.sqrt(ak.singletons(chi2)),3,axis=1),
+                    'chi1':                   ak.pad_none(ak.singletons(np.sqrt(chi1[:,0])),3,axis=1),
+                    'chi2':                   ak.pad_none(np.sqrt(chi2),3,axis=1),
                     'chi3':                   ak.pad_none(np.sqrt(chi3),3,axis=1),
                     'chi':                    ak.pad_none(chi_sq_tt,3,axis=1),
 
