@@ -611,8 +611,16 @@ class AnalysisProcessor(processor.ProcessorABC):
         chi2, mean2, std2 = chi_square(mT, 58.87, 37.35) # H -> WW             
         chi3, mean3, std3 = chi_square(qq.mass,66.89, 10.98) #hadronic W*
 
-        chi_sq_tt = np.sqrt(chi1 + chi2 + chi3)
-        chi_sq_tt = chi_sq_tt[ak.argmin(chi_sq_tt,axis=1,keepdims=True)]
+        chi_sq_hh = np.sqrt(chi1 + chi2 + chi3)
+        #chi_sq_hh = ak.mask(chi_sq_hh, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0)
+        chi_sq_hh = chi_sq_hh[ak.argmin(chi_sq_hh,axis=1,keepdims=True)]
+
+        #mbb = ak.mask(mbb, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0)
+        #mlvqq = ak.mask(mlvqq, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0)
+        #qq = ak.mask(qq, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0)
+        #chi1 = ak.mask(chi1, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0)
+        #chi2 = ak.mask(chi2, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0)
+        #chi3 = ak.mask(chi3, ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0)        
         
         ###
         #Calculating weights
@@ -828,7 +836,7 @@ class AnalysisProcessor(processor.ProcessorABC):
                     'chi1':                   ak.pad_none(np.sqrt(ak.singletons(chi1)),3,axis=1),
                     'chi2':                   ak.pad_none(np.sqrt(ak.singletons(chi2)),3,axis=1),
                     'chi3':                   ak.pad_none(np.sqrt(chi3),3,axis=1),
-                    'chi':                    ak.pad_none(chi_sq_tt,3,axis=1),
+                    'chi':                    ak.pad_none(chi_sq_hh,3,axis=1),
 
                 }
                 
