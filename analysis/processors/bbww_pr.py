@@ -16,6 +16,9 @@ from coffea.nanoevents.methods import vector
 import gzip
 from scipy.optimize import minimize
 
+global_signal_weight = 0
+global_tt_weight = 0
+
 def update(events, collections):
     """Return a shallow copy of events array with some collections swapped out"""
     out = events
@@ -187,7 +190,7 @@ class AnalysisProcessor(processor.ProcessorABC):
             'sumw': 0.,
             'met': hist.Hist(
                 hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(30,0,300, name='met', label='MET'),
+                hist.axis.Regular(3000,0,300, name='met', label='MET'),
                 storage=hist.storage.Weight(),
             ),
             'chi_hadW_W': hist.Hist(
@@ -587,6 +590,7 @@ class AnalysisProcessor(processor.ProcessorABC):
         chi3_W, mean3_W, std3_W = chi_square(qq.mass,41.77, 14.92) #hadronic W*    
          
         chi_sq_hh_W = np.sqrt(chi1_W + chi2_W + chi3_W)
+        hW_cs = chi_sq_hh_W[ak.argmin(chi_sq_hh_W,axis=1,keepdims=True)]
         
         hadW_mask = ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)>=55.0 #hadronic W signal selection
         hadWs_mask = ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0 #hadronic W*signal selection
@@ -705,7 +709,8 @@ class AnalysisProcessor(processor.ProcessorABC):
         chi3_Ws, mean3_Ws, std3_Ws = chi_square(qq_cut.mass,66.89, 10.98) #hadronic W
 
         chi_sq_hh_Ws = np.sqrt(chi1_Ws + chi2_Ws + chi3_Ws)
-
+        hWs_cs = chi_sq_hh_Ws[ak.argmin(chi_sq_hh_Ws,axis=1,keepdims=True)]
+        
         chi_sq_hh_Ws = {
                  'hadW'  : ak.mask(chi_sq_hh_Ws, hadW_mask),
                  'hadWs' : ak.mask(chi_sq_hh_Ws, hadWs_mask),
@@ -787,6 +792,7 @@ class AnalysisProcessor(processor.ProcessorABC):
         chi3_tt, mean3_tt, std3_tt = chi_square(qq.mass,23.56,73.9) #hadronic W
         
         chi_sq_tt = np.sqrt(chi1_tt + chi2_tt + chi3_tt)
+        tt_cs = chi_sq_tt[ak.argmin(chi_sq_tt,axis=1,keepdims=True)]
 
         #separate three regions
         chi_sq_tt = {
@@ -826,7 +832,15 @@ class AnalysisProcessor(processor.ProcessorABC):
                  'hadWs' : ak.mask(chi3_tt, hadWs_mask),
                  'ttbar' : chi3_tt
                  }
-        
+
+        hWs_events = ak.mask(ak.firsts(hWs_cs), ak.firsts(hWs_cs) <1.8)
+        hW_events = ak.mask(ak.firsts(hW_cs), ak.firsts(hW_cs) <2.1)
+        global tt_events
+        bg_events = ak.mask(ak.firsts(tt_cs), ak.firsts(tt_cs) >1.6)
+        tt_events = ~ak.is_none(bg_events)
+        global signal_events
+        signal_events = (~(ak.is_none(hWs_events))) | (~(ak.is_none(hW_events)))| (~(ak.is_none(bg_events)))
+
         ###
         #Calculating weights
         ###
@@ -1020,12 +1034,18 @@ class AnalysisProcessor(processor.ProcessorABC):
                 return ar
                 
         def fill(region, systematic):
+            global global_signal_weight, global_tt_weight
             cut = selection.all(*regions[region])
             sname = 'nominal' if systematic is None else systematic
             if systematic in weights.variations:
                 weight = weights.weight(modifier=systematic)[cut]
             else:
                 weight = weights.weight()[cut]
+            sweight = weight[signal_events[cut]]
+            tweight = weight[tt_events[cut]]
+            global_signal_weight += ak.sum(sweight)
+            global_tt_weight += ak.sum(tweight)
+            print('signal:',global_signal_weight, 'ttbar:',global_tt_weight)
             if systematic is None:
                 variables = {
                     'chi_hadW_W':                    ak.firsts(chi_sq_hh_W['hadW']),
@@ -1037,7 +1057,6 @@ class AnalysisProcessor(processor.ProcessorABC):
                     'chi_tt_W':                      ak.firsts(chi_sq_tt['hadW']),
                     'chi_tt_Ws':                     ak.firsts(chi_sq_tt['hadWs']),
                     'chi_tt_tt':                     ak.firsts(chi_sq_tt['ttbar']),
-
                 }
                 
                 if 'e' in region:
@@ -1056,7 +1075,7 @@ class AnalysisProcessor(processor.ProcessorABC):
                     output[variable].fill(
                         region=region,
                         **normalized_variable,
-                        #weight=weight,
+                        weight=weight,
                     )
                 
         if shift_name is None:
@@ -1112,3 +1131,4 @@ if __name__ == '__main__':
                                          xsec=xsec)
 
     save(processor_instance, 'data/bbww'+options.name+'.processor')
+
