@@ -15,6 +15,8 @@ from optparse import OptionParser
 from coffea.nanoevents.methods import vector
 import gzip
 from scipy.optimize import minimize
+from functools import reduce
+
 
 global_signal_weight = 0
 global_tt_weight = 0
@@ -238,6 +240,16 @@ class AnalysisProcessor(processor.ProcessorABC):
                 hist.axis.Regular(50,0,5, name='chi_tt_tt', label= r'$\chi_2$ (total chi square)'),
                 storage=hist.storage.Weight(),
             ),
+            'j_gen1': hist.Hist(
+                hist.axis.StrCategory([], name='region', growth=True),
+                hist.axis.Regular(50,0,200, name='j_gen1', label='pT'),
+                storage=hist.storage.Weight(),
+            ),
+            'j_gen2': hist.Hist(
+                hist.axis.StrCategory([], name='region', growth=True),
+		hist.axis.Regular(50,0,200, name='j_gen1', label='pT'),
+                storage=hist.storage.Weight(),
+            ),
 
         }
             
@@ -343,9 +355,16 @@ class AnalysisProcessor(processor.ProcessorABC):
         npv = events.PV.npvsGood 
         run = events.run
         #calomet = events.CaloMET
-        met = events.DeepMETResolutionTune
-        met['pt'] , met['phi'] = get_met_xy_correction(self._year, npv, run, met.pt, met.phi, isData)
-
+        met =  events.DeepMETResolutionTune
+        met['T'] = ak.zip(
+            {
+                "pt": met.pt,
+                "phi": met.phi,
+            },
+            with_name="PolarTwoVector",
+            behavior=vector.behavior,
+        )
+        
         ###
         #Initialize physics objects
         ###
@@ -490,8 +509,46 @@ class AnalysisProcessor(processor.ProcessorABC):
         ###
         # Calculate derivatives
         ###
-
+        def find_genpart(genpart, pdgid, ancestors):
+            """
+            Find gen level particles given pdgId (and ancestors ids)
+        
+            Parameters:
+            genpart (GenPart): NanoAOD GenPart collection.
+            pdgid (list): pdgIds for the target particles.
+            idmother (list): pdgIds for the ancestors of the target particles.
+        
+            Returns:
+            NanoAOD GenPart collection
+            """
+            
+            def check_id(p):
+                return np.abs(genpart.pdgId) == p
+        
+            pid = reduce(np.logical_or, map(check_id, pdgid))
+        
+            if ancestors:
+                ancs, ancs_idx = [], []
+                for i, mother_id in enumerate(ancestors):
+                    if i == 0:
+                        mother_idx = genpart[pid].genPartIdxMother
+                    else:
+                        mother_idx = genpart[ancs_idx[i-1]].genPartIdxMother
+                    ancs.append(np.abs(genpart[mother_idx].pdgId) == mother_id)
+                    ancs_idx.append(mother_idx)
+        
+                decaymatch =  reduce(np.logical_and, ancs)
+                return genpart[pid][decaymatch]
+        
+            return genpart[pid]
+        
+        genparts = events.GenPart
         j_candidates = j_soft[ak.argsort(j_soft.particleNetAK4_QvsG, axis=1, ascending=False)]#particleNetAK4_QvsG btagPNetQvG
+        qFromW = find_genpart(genparts, [1, 2 ,3, 4], [24, 25])
+        gen_qFromW = ak.pad_none( qFromW, 2 )
+        j_gen1 = j_candidates[ (gen_qFromW[:,0].delta_r( j_candidates ) < 0.2 ) ]
+        j_gen2 = j_candidates[ (gen_qFromW[:,1].delta_r( j_candidates ) < 0.2 ) ]
+
         j_candidates = j_candidates[:, :5] #consider only the first 5
         j_candidates = j_candidates[ak.argsort(j_candidates.particleNetAK4_B, axis=1, ascending=False)]#particleNetAK4_B btagPNetB
         
@@ -501,8 +558,9 @@ class AnalysisProcessor(processor.ProcessorABC):
 
         
         jj_i = ak.argcombinations(j_candidates,2,fields=["j1","j2"])
-        jj_i = jj_i[(j_candidates[jj_i.j1]+ j_candidates[jj_i.j2]).eta<2.0]
+        jj_i = jj_i[(j_candidates[jj_i.j1]- j_candidates[jj_i.j2]).eta<2.0]
         jj_i = jj_i[(j_candidates[jj_i.j1]+ j_candidates[jj_i.j2]).mass<120.0] #dijet cuts
+        jj_tt_mask =  ak.pad_none(j_candidates[jj_i.j2].pt>20.0, 3, axis=1) # select subleading pt > 20 for TTbar
         
         try:
             bb = jb_candidates[:, 0] + jb_candidates[:, 1]
@@ -590,10 +648,12 @@ class AnalysisProcessor(processor.ProcessorABC):
         chi3_W, mean3_W, std3_W = chi_square(qq.mass,41.77, 14.92) #hadronic W*    
          
         chi_sq_hh_W = np.sqrt(chi1_W + chi2_W + chi3_W)
-        hW_cs = chi_sq_hh_W[ak.argmin(chi_sq_hh_W,axis=1,keepdims=True)]
-        
+
         hadW_mask = ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)>=55.0 #hadronic W signal selection
         hadWs_mask = ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0 #hadronic W*signal selection
+
+        hW_cs = ak.mask(chi_sq_hh_W, hadWs_mask)
+        hW_cs = hW_cs[ak.argmin(hW_cs,axis=1,keepdims=True)]
 
         #separate three regions
         chi_sq_hh_W = {
@@ -683,8 +743,8 @@ class AnalysisProcessor(processor.ProcessorABC):
 
         #transverse mass
         mT = {
-            'esr'  : np.sqrt(2*leading_e.pt*met.pt*(1-np.cos(met.phi - leading_e.phi))),
-            'msr'  : np.sqrt(2*leading_mu.pt*met.pt*(1-np.cos(met.phi - leading_mu.phi))) #using .delta_phi doesn't seem to work for DeepMET
+            'esr'  : np.sqrt(2*leading_e.pt*met.pt*(1-np.cos(met.T.delta_phi(leading_e.T)))),
+            'msr'  : np.sqrt(2*leading_mu.pt*met.pt*(1-np.cos(met.T.delta_phi(leading_mu.T))))
         }
 
         mlvqq_Ws = {
@@ -709,7 +769,8 @@ class AnalysisProcessor(processor.ProcessorABC):
         chi3_Ws, mean3_Ws, std3_Ws = chi_square(qq_cut.mass,66.89, 10.98) #hadronic W
 
         chi_sq_hh_Ws = np.sqrt(chi1_Ws + chi2_Ws + chi3_Ws)
-        hWs_cs = chi_sq_hh_Ws[ak.argmin(chi_sq_hh_Ws,axis=1,keepdims=True)]
+        hWs_cs = ak.mask(chi_sq_hh_Ws, hadWs_mask)
+        hWs_cs = hWs_cs[ak.argmin(hWs_cs,axis=1,keepdims=True)]
         
         chi_sq_hh_Ws = {
                  'hadW'  : ak.mask(chi_sq_hh_Ws, hadW_mask),
@@ -769,8 +830,8 @@ class AnalysisProcessor(processor.ProcessorABC):
                          ak.where(l_mu, mmvb2, mevb2)
                          ) #leptonic candidate 2  
 
-        mbqq1 = ak.pad_none((ak.pad_none(jb_candidates,2,axis=1)[:,0] + qq).mass,3,axis=1) #hadronic candidate 1
-        mbqq2 = ak.pad_none((ak.pad_none(jb_candidates,2,axis=1)[:,1] + qq).mass,3,axis=1) #hadronic candidate 2
+        mbqq1 = ak.pad_none((ak.pad_none(jb_candidates,2,axis=1)[:,0] + ak.mask(qq, jj_tt_mask)).mass,3,axis=1) #hadronic candidate 1
+        mbqq2 = ak.pad_none((ak.pad_none(jb_candidates,2,axis=1)[:,1] + ak.mask(qq, jj_tt_mask)).mass,3,axis=1) #hadronic candidate 2
 
         def distance(x1,y1,x2,y2):
             return np.sqrt((x2-x1)**2+(y2-y1)**2)
@@ -787,9 +848,10 @@ class AnalysisProcessor(processor.ProcessorABC):
         #final ttbar candidates
         tt = ak.pad_none(ak.where( c1 & c2, ak.where(b_sel, tt1 , tt2), ak.where(c1, tt1, tt2)),3,axis=1)
 
-        chi1_tt, mean1_tt, std1_tt = chi_square(tt.t1,47.59,194.93 ) #leptonic top
-        chi2_tt, mean2_tt, std2_tt = chi_square(tt.t2, 44.95, 171.55 ) #hadronic top
-        chi3_tt, mean3_tt, std3_tt = chi_square(qq.mass,23.56,73.9) #hadronic W
+        qq_tt = ak.mask(qq, ak.pad_none((j_candidates[jj_i.j2].pt > 20.0),3,axis=1))
+        chi1_tt, mean1_tt, std1_tt = chi_square(tt.t1,194.93 , 47.59 ) #leptonic top
+        chi2_tt, mean2_tt, std2_tt = chi_square(tt.t2, 171.55, 44.95 ) #hadronic top
+        chi3_tt, mean3_tt, std3_tt = chi_square(qq_tt.mass,73.9, 23.56) #hadronic W
         
         chi_sq_tt = np.sqrt(chi1_tt + chi2_tt + chi3_tt)
         tt_cs = chi_sq_tt[ak.argmin(chi_sq_tt,axis=1,keepdims=True)]
@@ -810,9 +872,9 @@ class AnalysisProcessor(processor.ProcessorABC):
                  }
 
         qq_tt = {
-                 'hadW'  : ak.mask(qq, hadW_mask),
-                 'hadWs' : ak.mask(qq, hadWs_mask),
-                 'ttbar' : qq
+                 'hadW'  : ak.mask(qq_tt, hadW_mask),
+                 'hadWs' : ak.mask(qq_tt, hadWs_mask),
+                 'ttbar' : qq_tt
                  }
 
         chi1_tt = {
@@ -833,13 +895,13 @@ class AnalysisProcessor(processor.ProcessorABC):
                  'ttbar' : chi3_tt
                  }
 
-        hWs_events = ak.mask(ak.firsts(hWs_cs), ak.firsts(hWs_cs) <1.8)
-        hW_events = ak.mask(ak.firsts(hW_cs), ak.firsts(hW_cs) <2.1)
+        hWs_events = ak.mask(ak.firsts(hWs_cs), ak.firsts(hWs_cs) <2)
+        hW_events = ak.mask(ak.firsts(hW_cs), ak.firsts(hW_cs) <1.6)
         global tt_events
-        bg_events = ak.mask(ak.firsts(tt_cs), ak.firsts(tt_cs) >1.6)
+        bg_events = ak.mask(ak.firsts(tt_cs), ak.firsts(tt_cs) >1.5)
         tt_events = ~ak.is_none(bg_events)
         global signal_events
-        signal_events = (~(ak.is_none(hWs_events))) | (~(ak.is_none(hW_events)))| (~(ak.is_none(bg_events)))
+        signal_events = (~(ak.is_none(hW_events))) | (~(ak.is_none(bg_events))) | (~(ak.is_none(hWs_events)))
 
         ###
         #Calculating weights
@@ -1048,15 +1110,16 @@ class AnalysisProcessor(processor.ProcessorABC):
             print('signal:',global_signal_weight, 'ttbar:',global_tt_weight)
             if systematic is None:
                 variables = {
-                    'chi_hadW_W':                    ak.firsts(chi_sq_hh_W['hadW']),
-                    'chi_hadW_Ws':                   ak.firsts(chi_sq_hh_W['hadWs']),
-                    'chi_hadW_tt':                   ak.firsts(chi_sq_hh_W['ttbar']),
-                    'chi_hadWs_W':                   ak.firsts(chi_sq_hh_Ws['hadW']),
-                    'chi_hadWs_Ws':                  ak.firsts(chi_sq_hh_Ws['hadWs']),
-                    'chi_hadWs_tt':                  ak.firsts(chi_sq_hh_Ws['ttbar']),
-                    'chi_tt_W':                      ak.firsts(chi_sq_tt['hadW']),
-                    'chi_tt_Ws':                     ak.firsts(chi_sq_tt['hadWs']),
-                    'chi_tt_tt':                     ak.firsts(chi_sq_tt['ttbar']),
+                    #'chi_hadW_W':                    ak.firsts(chi_sq_hh_W['hadW']),
+                    #'chi_hadW_Ws':                   ak.firsts(chi_sq_hh_W['hadWs']),
+                    #'chi_hadW_tt':                   ak.firsts(chi_sq_hh_W['ttbar']),
+                    #'chi_hadWs_W':                   ak.firsts(chi_sq_hh_Ws['hadW']),
+                    #'chi_hadWs_Ws':                  ak.firsts(chi_sq_hh_Ws['hadWs']),
+                    #'chi_hadWs_tt':                  ak.firsts(chi_sq_hh_Ws['ttbar']),
+                    #'chi_tt_W':                      ak.firsts(chi_sq_tt['hadW']),
+                    #'chi_tt_Ws':                     ak.firsts(chi_sq_tt['hadWs']),
+                    #'chi_tt_tt':                     ak.firsts(chi_sq_tt['ttbar']),
+                    'j_gen1':                        ak.concatenate([ak.firsts(j_gen1.pt), ak.firsts(j_gen2.pt)]),
                 }
                 
                 if 'e' in region:
