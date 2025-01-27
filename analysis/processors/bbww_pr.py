@@ -17,7 +17,6 @@ import gzip
 from scipy.optimize import minimize
 from functools import reduce
 
-
 global_signal_weight = 0
 global_tt_weight = 0
 
@@ -190,69 +189,47 @@ class AnalysisProcessor(processor.ProcessorABC):
 
         self.make_output = lambda: {
             'sumw': 0.,
-            'met': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(3000,0,300, name='met', label='MET'),
-                storage=hist.storage.Weight(),
+            'met' : hist.Hist(
+                hist.axis.StrCategory([], name="region", growth=True), 
+                hist.axis.StrCategory([], name="dataset", growth=True),
+                hist.axis.Variable([-10, 0, 55,1000], name="sr_hadw", label="regions_hadronicW_selection"),
+                hist.axis.Variable([-10, 0, 55,1000], name="sr_hadws", label="regions_hadronicWs_selection"),
+                hist.axis.Variable([-10, 0, 55,1000], name="br_tt", label="regions_ttbar_selection"),
+                hist.axis.Regular(50, 0, 300, name="met", label="MET pT"), 
+                storage=hist.storage.Weight()  
             ),
-            'chi_hadW_W': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi_hadW_W', label= r'$\chi_2$ (total chi square)'),
-                storage=hist.storage.Weight(),                                 
+            'chi_hadW' : hist.Hist(
+                hist.axis.StrCategory([], name="region", growth=True),
+                hist.axis.StrCategory([], name="dataset", growth=True),
+		hist.axis.Variable([-10, 0, 55,1000], name="sr_hadw", label="regions_hadronicW_selection"),
+                hist.axis.Variable([-10, 0, 55,1000], name="sr_hadws", label="regions_hadronicWs_selection"),
+                hist.axis.Variable([-10, 0, 55,1000], name="br_tt", label="regions_ttbar_selection"),
+                hist.axis.Regular(50, 0, 5, name="chi_hadW", label=r'$\chi^2$'),
+                storage=hist.storage.Weight()
             ),
-            'chi_hadW_Ws': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi_hadW_Ws', label= r'$\chi_2$ (total chi square)'),
-                storage=hist.storage.Weight(),
+            'chi_hadWs' : hist.Hist(
+                hist.axis.StrCategory([], name="region", growth=True),
+                hist.axis.StrCategory([], name="dataset", growth=True),
+		hist.axis.Variable([-10, 0,55,1000], name="sr_hadw", label="regions_hadronicW_selection"),
+                hist.axis.Variable([-10, 0,55,1000], name="sr_hadws", label="regions_hadronicWs_selection"),
+                hist.axis.Variable([-10, 0,55,1000], name="br_tt", label="regions_ttbar_selection"),
+                hist.axis.Regular(50, 0, 5, name="chi_hadWs", label=r'$\chi^2$'),
+                storage=hist.storage.Weight()
             ),
-            'chi_hadW_tt': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi_hadW_tt', label= r'$\chi_2$ (total chi square)'),
-                storage=hist.storage.Weight(),
-            ),
-            'chi_hadWs_W': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi_hadWs_W', label= r'$\chi_2$ (total chi square)'),
-                storage=hist.storage.Weight(),
-            ),
-            'chi_hadWs_Ws': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi_hadWs_Ws', label= r'$\chi_2$ (total chi square)'),
-                storage=hist.storage.Weight(),
-            ),
-            'chi_hadWs_tt': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi_hadWs_tt', label= r'$\chi_2$ (total chi square)'),
-                storage=hist.storage.Weight(),
-            ),
-            'chi_tt_W': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi_tt_W', label= r'$\chi_2$ (total chi square)'),
-                storage=hist.storage.Weight(),
-            ),
-            'chi_tt_Ws': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi_tt_Ws', label= r'$\chi_2$ (total chi square)'),
-                storage=hist.storage.Weight(),
-            ),
-            'chi_tt_tt': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,5, name='chi_tt_tt', label= r'$\chi_2$ (total chi square)'),
-                storage=hist.storage.Weight(),
-            ),
-            'j_gen1': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-                hist.axis.Regular(50,0,200, name='j_gen1', label='pT'),
-                storage=hist.storage.Weight(),
-            ),
-            'j_gen2': hist.Hist(
-                hist.axis.StrCategory([], name='region', growth=True),
-		hist.axis.Regular(50,0,200, name='j_gen1', label='pT'),
-                storage=hist.storage.Weight(),
-            ),
+	    'chi_tt' : hist.Hist(
+		hist.axis.StrCategory([], name="region", growth=True),
+                hist.axis.StrCategory([], name="dataset", growth=True),
+		hist.axis.Variable([-10, 0, 55, 1000], name="sr_hadw", label="regions_hadronicW_selection"),
+                hist.axis.Variable([-10, 0, 55, 1000], name="sr_hadws", label="regions_hadronicWs_selection"),
+                hist.axis.Variable([-10, 0, 55, 1000], name="br_tt", label="regions_ttbar_selection"),
+                hist.axis.Regular(50, 0, 5, name="chi_tt", label=r'$\chi^2$'),
+                storage=hist.storage.Weight()
+            )
+
 
         }
-            
+        
+        
     def process(self, events):
         isData = not hasattr(events, "genWeight")
         if isData:
@@ -279,7 +256,7 @@ class AnalysisProcessor(processor.ProcessorABC):
             return jets
         
         jets = jet_factory[thekey].build(add_jec_variables(events.Jet, events.fixedGridRhoFastjetAll), jec_cache)
-        met = events.DeepMETResolutionTune
+        met = met_factory.build(events.MET, jets, {})
 
         shifts = [({"Jet": jets,"MET": met}, None)]
         if self._systematics:
@@ -355,15 +332,17 @@ class AnalysisProcessor(processor.ProcessorABC):
         npv = events.PV.npvsGood 
         run = events.run
         #calomet = events.CaloMET
-        met =  events.DeepMETResolutionTune
-        met['T'] = ak.zip(
-            {
-                "pt": met.pt,
-                "phi": met.phi,
-            },
-            with_name="PolarTwoVector",
-            behavior=vector.behavior,
-        )
+        met = events.MET
+        met['pt'] , met['phi'] = get_met_xy_correction(self._year, npv, run, met.pt, met.phi, isData)
+        #met['T'] = ak.zip(
+        #    {
+        #        "r": met.pt,
+        #        "phi": met.phi,
+        #    },
+        #    with_name="PolarTwoVector",
+        #    behavior=vector.behavior,
+        #)
+
         
         ###
         #Initialize physics objects
@@ -556,7 +535,6 @@ class AnalysisProcessor(processor.ProcessorABC):
         j_candidates = j_candidates[:,2:] #non b-jets
         j_candidates = j_candidates[ak.argsort(j_candidates.pt, axis=1, ascending=False)]
 
-        
         jj_i = ak.argcombinations(j_candidates,2,fields=["j1","j2"])
         jj_i = jj_i[(j_candidates[jj_i.j1]- j_candidates[jj_i.j2]).eta<2.0]
         jj_i = jj_i[(j_candidates[jj_i.j1]+ j_candidates[jj_i.j2]).mass<120.0] #dijet cuts
@@ -627,14 +605,14 @@ class AnalysisProcessor(processor.ProcessorABC):
         l_e = ~ak.is_none(leading_e.pt)
         muge = leading_mu.pt > leading_e.pt
 
-        mlvqq_W = {
+        mlvqq_hadWs = {
             'esr'  : mevqq,
             'msr'  : mmuvqq
         }
          
-        mlvqq_W = ak.where(l_mu & l_e,
-                         ak.where(muge, mlvqq_W['msr'], mlvqq_W['esr']),
-                         ak.where(l_mu, mlvqq_W['msr'], mlvqq_W['esr'])
+        mlvqq_hadWs = ak.where(l_mu & l_e,
+                         ak.where(muge, mlvqq_hadWs['msr'], mlvqq_hadWs['esr']),
+                         ak.where(l_mu, mlvqq_hadWs['msr'], mlvqq_hadWs['esr'])
                          ) #select leading lepton combination
 
         def chi_square(data,mean,std):
@@ -643,56 +621,17 @@ class AnalysisProcessor(processor.ProcessorABC):
             chi2 = ((data - mean)/std)**2
             return chi2, mean, std
 
-        chi1_W, mean1_W, std1_W = chi_square(mbb,116.02, 45.04) # H -> bb            
-        chi2_W, mean2_W, std2_W = chi_square(mlvqq_W, 173.59, 48.67) # H -> lvqq
-        chi3_W, mean3_W, std3_W = chi_square(qq.mass,41.77, 14.92) #hadronic W*    
+        chi1_hadWs, mean1_hadWs, std1_hadWs = chi_square(mbb,116.02, 45.04) # H -> bb            
+        chi2_hadWs, mean2_hadWs, std2_hadWs = chi_square(mlvqq_hadWs, 173.59, 48.67) # H -> lvqq
+        chi3_hadWs, mean3_hadWs, std3_hadWs = chi_square(qq.mass,41.77, 14.92) #hadronic W*    
          
-        chi_sq_hh_W = np.sqrt(chi1_W + chi2_W + chi3_W)
-
-        hadW_mask = ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)>=55.0 #hadronic W signal selection
-        hadWs_mask = ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1)<55.0 #hadronic W*signal selection
-
-        hW_cs = ak.mask(chi_sq_hh_W, hadWs_mask)
-        hW_cs = hW_cs[ak.argmin(hW_cs,axis=1,keepdims=True)]
-
-        #separate three regions
-        chi_sq_hh_W = {
-                 'hadW'  : ak.mask(chi_sq_hh_W, hadW_mask),
-                 'hadWs' : ak.mask(chi_sq_hh_W, hadWs_mask),
-                 'ttbar' : chi_sq_hh_W
-                 }
+        chi_sq_hadWs = np.sqrt(chi1_hadWs + chi2_hadWs + chi3_hadWs)
+        min_chi_sq_hadWs = ak.argmin(chi_sq_hadWs, axis=1, keepdims = True) #index of the minimum chi square non-bjet pair
+        chi_sq_hadWs = chi_sq_hadWs[min_chi_sq_hadWs]
         
-        chi_sq_hh_W = {key: value[ak.argmin(value, axis=1, keepdims = True)] for key, value in chi_sq_hh_W.items()} #selecting non-bjets pairing with least chi square
+        jj_gen_mass = ak.pad_none((j_candidates[jj_i.j1].matched_gen + j_candidates[jj_i.j2].matched_gen).mass, 3, axis=1) 
+        jj_sel_gen_mass_hadWs =  ak.fill_none(ak.firsts(jj_gen_mass[min_chi_sq_hadWs]),-1) #gen mass of the di jet pair with minimum chi square
         
-        mlvqq_W = {
-                 'hadW'  : ak.mask(mlvqq_W, hadW_mask),
-                 'hadWs' : ak.mask(mlvqq_W, hadWs_mask),
-                 'ttbar' : mlvqq_W
-                 }
-
-        qq_W = {
-                 'hadW'  : ak.mask(qq, hadW_mask),
-                 'hadWs' : ak.mask(qq, hadWs_mask),
-                 'ttbar' : qq
-                 }
-
-        chi1_W = {
-                 'hadW'  : ak.mask(chi1_W, hadW_mask),
-                 'hadWs' : ak.mask(chi1_W, hadWs_mask),
-                 'ttbar' : chi1_W
-                 }
-
-        chi2_W = {
-                 'hadW'  : ak.mask(chi2_W, hadW_mask),
-                 'hadWs' : ak.mask(chi2_W, hadWs_mask),
-                 'ttbar' : chi2_W
-                 }
-
-        chi3_W = {
-                 'hadW'  : ak.mask(chi3_W, hadW_mask),
-                 'hadWs' : ak.mask(chi3_W, hadWs_mask),
-                 'ttbar' : chi3_W
-                 }
         ## end hadronic W* signal reconstruction
 
         ## hadronic W signal reconstruction
@@ -712,7 +651,7 @@ class AnalysisProcessor(processor.ProcessorABC):
         
             return pz
 
-        v_e_Ws = ak.zip(
+        v_e_hadW = ak.zip(
             {
 	        "x": met.pt * np.cos(met.phi),
                 "y": met.pt * np.sin(met.phi),
@@ -723,7 +662,7 @@ class AnalysisProcessor(processor.ProcessorABC):
             behavior=vector.behavior,
 	        )
 
-        v_mu_Ws = ak.zip(
+        v_mu_hadW = ak.zip(
             {
                 "x": met.pt * np.cos(met.phi),
 		"y": met.pt * np.sin(met.phi),
@@ -734,27 +673,25 @@ class AnalysisProcessor(processor.ProcessorABC):
             behavior=vector.behavior,
 	        )
         
-        v_mu_Ws = ak.mask(v_mu_Ws, ~np.isnan(v_mu_Ws.pz))
-        v_e_Ws = ak.mask(v_e_Ws, ~np.isnan(v_e_Ws.pz)) #avoid calculations for imaginary solutions that are not always skipped
+        v_mu_hadW = ak.mask(v_mu_hadW, ~np.isnan(v_mu_hadW.pz))
+        v_e_hadW = ak.mask(v_e_hadW, ~np.isnan(v_e_hadW.pz)) #avoid calculations for imaginary solutions that are not always skipped
         
         # H -> lvqq with electrons and muons
-        mevqq_Ws = (leading_e + v_e_Ws + qq).mass
-        mmuvqq_Ws = (leading_mu + v_e_Ws + qq).mass
-
+        mlvqq_hadW = {
+            'esr'  : (leading_e + v_e_hadW + qq).mass,
+            'msr'  : (leading_mu + v_e_hadW + qq).mass
+        }
+        
         #transverse mass
         mT = {
-            'esr'  : np.sqrt(2*leading_e.pt*met.pt*(1-np.cos(met.T.delta_phi(leading_e.T)))),
-            'msr'  : np.sqrt(2*leading_mu.pt*met.pt*(1-np.cos(met.T.delta_phi(leading_mu.T))))
+            'esr'  : np.sqrt(2*leading_e.pt*met.pt*(1-np.cos(met.delta_phi(leading_e.T)))),
+            'msr'  : np.sqrt(2*leading_mu.pt*met.pt*(1-np.cos(met.delta_phi(leading_mu.T))))
         }
 
-        mlvqq_Ws = {
-            'esr'  : mevqq_Ws,
-            'msr'  : mmuvqq_Ws
-        }
 
-        mlvqq_Ws = ak.where(l_mu & l_e,
-                         ak.where(muge, mlvqq_Ws['msr'], mlvqq_Ws['esr']),
-                         ak.where(l_mu, mlvqq_Ws['msr'], mlvqq_Ws['esr'])
+        mlvqq_hadW = ak.where(l_mu & l_e,
+                         ak.where(muge, mlvqq_hadW['msr'], mlvqq_hadW['esr']),
+                         ak.where(l_mu, mlvqq_hadW['msr'], mlvqq_hadW['esr'])
                          ) #select leading lepton combination  
 
         mT = ak.where(l_mu & l_e,
@@ -762,54 +699,19 @@ class AnalysisProcessor(processor.ProcessorABC):
                          ak.where(l_mu, mT['msr'], mT['esr'])
                          )
 
-        qq_cut = ak.mask(qq, abs(mlvqq_Ws - 125.35) < 5) #dropping the 'tail' of Higgs mass plot
+        qq_cut = ak.mask(qq, abs(mlvqq_hadW - 125.35) < 5) #dropping the 'tail' of Higgs mass plot
 
-        chi1_Ws, mean1_Ws, std1_Ws = chi_square(mbb,115.33, 46.29) # H -> bb
-        chi2_Ws, mean2_Ws, std2_Ws = chi_square(mT, 58.87, 37.35) #transverse mass             
-        chi3_Ws, mean3_Ws, std3_Ws = chi_square(qq_cut.mass,66.89, 10.98) #hadronic W
+        chi1_hadW, mean1_hadW, std1_hadW = chi_square(mbb,115.33, 46.29) # H -> bb
+        chi2_hadW, mean2_hadW, std2_hadW = chi_square(mT, 58.87, 37.35) #transverse mass             
+        chi3_hadW, mean3_hadW, std3_hadW = chi_square(qq_cut.mass,66.89, 10.98) #hadronic W
 
-        chi_sq_hh_Ws = np.sqrt(chi1_Ws + chi2_Ws + chi3_Ws)
-        hWs_cs = ak.mask(chi_sq_hh_Ws, hadWs_mask)
-        hWs_cs = hWs_cs[ak.argmin(hWs_cs,axis=1,keepdims=True)]
+        chi_sq_hadW = np.sqrt(chi1_hadW + chi2_hadW + chi3_hadW)
+        min_chi_sq_hadW= ak.argmin(chi_sq_hadW, axis=1, keepdims = True) #index of the minimum chi square non-bjet pair
+        chi_sq_hadW = chi_sq_hadW[min_chi_sq_hadW]
+
+        #separate regions as done previously
+        jj_sel_gen_mass_hadW =  ak.fill_none(ak.firsts(jj_gen_mass[min_chi_sq_hadW]),-1) #gen mass of the di jet pair with minimum chi square
         
-        chi_sq_hh_Ws = {
-                 'hadW'  : ak.mask(chi_sq_hh_Ws, hadW_mask),
-                 'hadWs' : ak.mask(chi_sq_hh_Ws, hadWs_mask),
-                 'ttbar' : chi_sq_hh_Ws
-                 }
-
-        chi_sq_hh_Ws = {key: value[ak.argmin(value, axis=1, keepdims=True)] for key, value in chi_sq_hh_Ws.items()} #selecting non-bjets pairing with least chi square
-
-        mT = {
-                 'hadW'  : ak.mask(mT, hadW_mask),
-                 'hadWs' : ak.mask(mT, hadWs_mask),
-                 'ttbar' : mT
-                 }
-
-        qq_cut = {
-                 'hadW'  : ak.mask(qq_cut, hadW_mask),
-                 'hadWs' : ak.mask(qq_cut, hadWs_mask),
-                 'ttbar' : qq_cut
-                 }
-
-        chi1_Ws = {
-                 'hadW'  : ak.mask(chi1_Ws, hadW_mask),
-                 'hadWs' : ak.mask(chi1_Ws, hadWs_mask),
-                 'ttbar' : chi1_Ws
-                 }
-
-        chi2_Ws = {
-                 'hadW'  : ak.mask(chi2_Ws, hadW_mask),
-                 'hadWs' : ak.mask(chi2_Ws, hadWs_mask),
-                 'ttbar' : chi2_Ws
-                 }
-
-        chi3_Ws = {
-                 'hadW'  : ak.mask(chi3_Ws, hadW_mask),
-                 'hadWs' : ak.mask(chi3_Ws, hadWs_mask),
-                 'ttbar' : chi3_Ws
-                 }
-
         ## ttbar reconstruction
         
         #leptonic top with electrons
@@ -848,61 +750,17 @@ class AnalysisProcessor(processor.ProcessorABC):
         #final ttbar candidates
         tt = ak.pad_none(ak.where( c1 & c2, ak.where(b_sel, tt1 , tt2), ak.where(c1, tt1, tt2)),3,axis=1)
 
-        qq_tt = ak.mask(qq, ak.pad_none((j_candidates[jj_i.j2].pt > 20.0),3,axis=1))
+        qq_tt = ak.mask(qq, ak.pad_none((j_candidates[jj_i.j1].pt > 20.0),3,axis=1)) #select leading pT jet > 20 GeV for ttbar
         chi1_tt, mean1_tt, std1_tt = chi_square(tt.t1,194.93 , 47.59 ) #leptonic top
         chi2_tt, mean2_tt, std2_tt = chi_square(tt.t2, 171.55, 44.95 ) #hadronic top
         chi3_tt, mean3_tt, std3_tt = chi_square(qq_tt.mass,73.9, 23.56) #hadronic W
         
         chi_sq_tt = np.sqrt(chi1_tt + chi2_tt + chi3_tt)
-        tt_cs = chi_sq_tt[ak.argmin(chi_sq_tt,axis=1,keepdims=True)]
+        min_chi_sq_tt = ak.argmin(chi_sq_tt, axis=1, keepdims = True) #get index of the minimum chi square 
+        chi_sq_tt = chi_sq_tt[min_chi_sq_tt]
 
-        #separate three regions
-        chi_sq_tt = {
-                 'hadW'  : ak.mask(chi_sq_tt, hadW_mask),
-                 'hadWs' : ak.mask(chi_sq_tt, hadWs_mask),
-                 'ttbar' : chi_sq_tt
-                 }
-
-        chi_sq_tt = {key: value[ak.argmin(value, axis=1, keepdims=True)] for key, value in chi_sq_tt.items()} #selecting non-bjets pairing with least chi square 
+        jj_sel_gen_mass_tt =  ak.fill_none(ak.firsts(jj_gen_mass[min_chi_sq_tt]),-1) #gen mass of the di jet pair with minimum chi square
         
-        tt = {
-                 'hadW'  : ak.mask(tt, hadW_mask),
-                 'hadWs' : ak.mask(tt, hadWs_mask),
-                 'ttbar' : tt
-                 }
-
-        qq_tt = {
-                 'hadW'  : ak.mask(qq_tt, hadW_mask),
-                 'hadWs' : ak.mask(qq_tt, hadWs_mask),
-                 'ttbar' : qq_tt
-                 }
-
-        chi1_tt = {
-                 'hadW'  : ak.mask(chi1_tt, hadW_mask),
-                 'hadWs' : ak.mask(chi1_tt, hadWs_mask),
-                 'ttbar' : chi1_tt
-                 }
-
-        chi2_tt = {
-                 'hadW'  : ak.mask(chi2_tt, hadW_mask),
-                 'hadWs' : ak.mask(chi2_tt, hadWs_mask),
-                 'ttbar' : chi2_tt
-                 }
-
-        chi3_tt = {
-                 'hadW'  : ak.mask(chi3_tt, hadW_mask),
-                 'hadWs' : ak.mask(chi3_tt, hadWs_mask),
-                 'ttbar' : chi3_tt
-                 }
-
-        hWs_events = ak.mask(ak.firsts(hWs_cs), ak.firsts(hWs_cs) <2)
-        hW_events = ak.mask(ak.firsts(hW_cs), ak.firsts(hW_cs) <1.6)
-        global tt_events
-        bg_events = ak.mask(ak.firsts(tt_cs), ak.firsts(tt_cs) >1.5)
-        tt_events = ~ak.is_none(bg_events)
-        global signal_events
-        signal_events = (~(ak.is_none(hW_events))) | (~(ak.is_none(bg_events))) | (~(ak.is_none(hWs_events)))
-
         ###
         #Calculating weights
         ###
@@ -1103,23 +961,13 @@ class AnalysisProcessor(processor.ProcessorABC):
                 weight = weights.weight(modifier=systematic)[cut]
             else:
                 weight = weights.weight()[cut]
-            sweight = weight[signal_events[cut]]
-            tweight = weight[tt_events[cut]]
-            global_signal_weight += ak.sum(sweight)
-            global_tt_weight += ak.sum(tweight)
-            print('signal:',global_signal_weight, 'ttbar:',global_tt_weight)
             if systematic is None:
                 variables = {
-                    #'chi_hadW_W':                    ak.firsts(chi_sq_hh_W['hadW']),
-                    #'chi_hadW_Ws':                   ak.firsts(chi_sq_hh_W['hadWs']),
-                    #'chi_hadW_tt':                   ak.firsts(chi_sq_hh_W['ttbar']),
-                    #'chi_hadWs_W':                   ak.firsts(chi_sq_hh_Ws['hadW']),
-                    #'chi_hadWs_Ws':                  ak.firsts(chi_sq_hh_Ws['hadWs']),
-                    #'chi_hadWs_tt':                  ak.firsts(chi_sq_hh_Ws['ttbar']),
-                    #'chi_tt_W':                      ak.firsts(chi_sq_tt['hadW']),
-                    #'chi_tt_Ws':                     ak.firsts(chi_sq_tt['hadWs']),
-                    #'chi_tt_tt':                     ak.firsts(chi_sq_tt['ttbar']),
-                    'j_gen1':                        ak.concatenate([ak.firsts(j_gen1.pt), ak.firsts(j_gen2.pt)]),
+                    'met':                         met.pt,
+                    'chi_hadW':                    ak.firsts(chi_sq_hadW),
+                    'chi_hadWs':                   ak.firsts(chi_sq_hadWs),
+                    'chi_tt':                      ak.firsts(chi_sq_tt),
+                    #'j_gen1':                        ak.concatenate([ak.firsts(j_gen1.pt), ak.firsts(j_gen2.pt)]),
                 }
                 
                 if 'e' in region:
@@ -1137,6 +985,10 @@ class AnalysisProcessor(processor.ProcessorABC):
                     normalized_variable = {variable: normalize(variables[variable],cut)}
                     output[variable].fill(
                         region=region,
+                        dataset= dataset,
+                        sr_hadw =  jj_sel_gen_mass_hadW[cut],
+                        sr_hadws = jj_sel_gen_mass_hadWs[cut],
+                        br_tt =    jj_sel_gen_mass_tt[cut],
                         **normalized_variable,
                         weight=weight,
                     )
