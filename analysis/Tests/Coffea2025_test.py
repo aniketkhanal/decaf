@@ -6,16 +6,29 @@ from coffea.util import load, save
 from coffea.nanoevents import NanoEventsFactory, NanoAODSchema
 from coffea.analysis_tools import Weights, PackedSelection
 from coffea.lumi_tools import LumiMask
+from coffea.dataset_tools import (
+    apply_to_fileset,
+    max_chunks,
+    preprocess,
+)
 import dask
 import dask_awkward as dak
 import hist
 import hist.dask as hda
 from dask.diagnostics import ProgressBar
 from dask.diagnostics import ResourceProfiler
+from optparse import OptionParser
+import yaml
 
 vector.register_awkward()
-
 path = "decaf/analysis/data/"
+
+def update(events, collections):
+    """Return a shallow copy of events array with some collections swapped out"""
+    out = events
+    for name, value in collections.items():
+        out = ak.with_field(out, value, name)
+    return out
 
 def make_output():
     return {
@@ -58,11 +71,56 @@ def make_output():
         ),
     }
 
+'''def process(events):
+    systematics = False
+    skipJER = True
+
+    isData = not hasattr(events, "genWeight")
+    if isData:
+        # Nominal JEC are already applied in data
+        return selection(events, xsecs, None)
+    
+    corrections = load(f'{path}/corrections.coffea')
+
+    jet_factory              = corrections['jet_factory']
+    met_factory              = corrections['met_factory']
+
+    nojer = "NOJER" if skipJER else ""
+    if 'year' in events.metadata:
+        print(events.metadata['year']) 
+        year = events.metadata['year'].replace('UL','20').replace("_", "")
+        lumi = events.metadata['lumi']
+    thekey = f"{year}mc{nojer}"
+
+    def add_jec_variables(jets, event_rho):
+        jets["pt_raw"] = (1 - jets.rawFactor)*jets.pt
+        jets["mass_raw"] = (1 - jets.rawFactor)*jets.mass
+        jets["pt_gen"] = ak.values_astype(ak.fill_none(jets.matched_gen.pt, 0), np.float32)
+        jets["event_rho"] = ak.broadcast_arrays(event_rho, jets.pt)[0]
+        return jets
+    
+    jets = jet_factory[thekey].build(add_jec_variables(events.Jet, events.fixedGridRhoFastjetAll))
+    met = met_factory.build(events.MET, jets)
+
+    shifts = [({"Jet": jets,"MET": met}, None)]
+    if systematics:
+        shifts.extend([
+            ({"Jet": jets.JES_jes.up, "MET": met.JES_jes.up}, "JESUp"),
+            ({"Jet": jets.JES_jes.down, "MET": met.JES_jes.down}, "JESDown"),
+            ({"Jet": jets, "MET": met.MET_UnclusteredEnergy.up}, "UESUp"),
+            ({"Jet": jets, "MET": met.MET_UnclusteredEnergy.down}, "UESDown"),
+        ])
+    if skipJER:
+        shifts.extend([
+            #({"Jet": jets.JER.up, "MET": met.JER.up}, "JERUp"),
+            #({"Jet": jets.JER.down, "MET": met.JER.down}, "JERDown"),
+        ])
+    return sum(selection(update(events, collections), name) for collections, name in shifts)'''
+
 def selection(events):
 
-    #metadata section
     dataset = events.metadata['dataset']
-    shift_name = None #placeholder until we add systematics and corrections. Eventually want shift_name as input to selection
+    shift_name = None #placeholder
 
     samples = {
             'msr':('QCD', 'TT', 'SingleMuon', 'TTToSemiLeptonic', 'GluGluToHHTo2B2VLNu2J'),
@@ -186,8 +244,8 @@ def selection(events):
         output['sumw'] = ak.sum(events.genWeight)
 
     year = '2018' #placeholder, want this as an input while running the processor eventually
-    systematics = False
-    skipJER = True
+    lumi = 1000.*float(lumis[year])
+    xsec = xsecs
 
     corrections = load(f'{path}/corrections.coffea')
     ids         = load(f'{path}/ids.coffea')
@@ -733,28 +791,51 @@ def selection(events):
         'msr': ['isoneM', 'noHEMj', 'njets', 'nbjets', 'met_filters', 'noHEMmet']
         }
     
-    def normalize(val):
-        return ak.fill_none(val, np.nan)
+    def normalize(val,cut):
+        if cut is None:
+            return ak.fill_none(val, np.nan)
+        else:
+            return ak.fill_none(val[cut], np.nan)
 
-    variables = {
-        'met':                         met.pt,
-        'chi_hadW':                    ak.firsts(chi_sq_hadW),
-        'chi_hadWs':                   ak.firsts(chi_sq_hadWs),
-        'chi_tt':                      ak.firsts(chi_sq_tt),
-    }
+    
+    def fill():
+        cut = selection.all(*regions[region])
+        weight = weights.weight()[cut]
+        
+        variables = {
+            'met':                         met.pt,
+            'chi_hadW':                    ak.firsts(chi_sq_hadW),
+            'chi_hadWs':                   ak.firsts(chi_sq_hadWs),
+            'chi_tt':                      ak.firsts(chi_sq_tt),
+        }
 
-    for variable in output:
-        if variable not in variables:
+        for variable in output:
+            if variable not in variables:
+                continue
+            normalized_variable = normalized_variable = {variable: normalize(variables[variable],cut)}
+            output[variable].fill(
+                dataset = dataset,
+                sr_hadw =  jj_sel_gen_mass_hadW[cut],
+                sr_hadws = jj_sel_gen_mass_hadWs[cut],
+                br_tt =    jj_sel_gen_mass_tt[cut],
+                **normalized_variable,
+                weight= weight
+            )
+    
+    fill()
+
+    scale = 1
+    if isinstance(xsec, dict):
+        if xsec[dataset]!= -1: 
+            scale = lumi*xsec[dataset]
+    else:
+        if xsec!= -1: 
+            scale = events.metadata['lumi']*events.metadata['xs']
+
+    for key in output:
+        if key=='sumw': 
             continue
-        normalized_variable = normalized_variable = {variable: normalize(variables[variable])}
-        output[variable].fill(
-            dataset = dataset,
-            sr_hadw =  jj_sel_gen_mass_hadW,
-            sr_hadws = jj_sel_gen_mass_hadWs,
-            br_tt =    jj_sel_gen_mass_tt,
-            **normalized_variable,
-            weight= weights.weight() 
-        )
+        output[key] *= scale
 
     return output
 
@@ -765,14 +846,76 @@ rprof = ResourceProfiler()
 
 filename = "root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_3.root"
 
-dakevents = NanoEventsFactory.from_root(
-    {filename: "Events"},
-    steps_per_file=10,
-    metadata={"dataset": "GluGluToHHTo2B2VLNu2J"},
-    schemaclass=NanoAODSchema,
-    delayed = True,
-).events()
+'''if __name__ == '__main__':
 
-out = selection(dakevents)
-computed, = dask.compute(out, scheduler='synchronous', scheduling_mode="depth-first",)
-save(computed, 'hists/hists.coffea')
+    parser = OptionParser()
+    parser.add_option('-m', '--metadata', dest="metadata",
+                        default="bbWW/metadata/bbWW_decaf.yml", help='Metadata datasets file.')
+    (options, args) = parser.parse_args()
+
+    metadata = yaml.safe_load(open(options.metadata, 'r'))
+    xsec = {k: v['xs'] for k,v in metadata['datasets'].items() if 'xs' in v}
+
+    dakevents = NanoEventsFactory.from_root(
+        {filename: "Events"},
+        steps_per_file=10,
+        metadata={"dataset": "GluGluToHHTo2B2VLNu2J", "year" : "2018", "xs" : xsec, "lumi" : 1 },
+        schemaclass=NanoAODSchema,
+        delayed = True,
+    ).events()
+
+    out = process(dakevents, xsec)
+    computed, = dask.compute(out, scheduler='synchronous', scheduling_mode="depth-first",)
+    save(computed, 'hists/hists.coffea')'''
+
+fileset = {
+    'GluGluToHHTo2B2VLNu2J': {
+        "files" : { 'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_3.root': "Events",
+                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_4.root': "Events",
+                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_10.root': "Events",
+                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_11.root': "Events",
+                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_8.root': "Events",
+                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_12.root': "Events",
+                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_7.root': "Events",
+        },
+        "metadata" :  {"dataset": "GluGluToHHTo2B2VLNu2J", "year" : "2018", "lumi" : 59.83 },
+    }
+}
+if __name__ == '__main__':
+
+    parser = OptionParser()
+    parser.add_option('-m', '--metadata', dest="metadata",
+                        default="bbWW/metadata/bbWW_decaf.yml", help='Metadata datasets file.')
+    (options, args) = parser.parse_args()
+
+    metadata = yaml.safe_load(open(options.metadata, 'r'))
+    xsecs = {k: v['xs'] for k,v in metadata['datasets'].items() if 'xs' in v}
+
+    dataset_runnable, dataset_updated = preprocess(
+        fileset,
+        align_clusters=False,
+        step_size=5000,
+        files_per_batch=2,
+        skip_bad_files=True,
+        save_form=False,
+
+    )
+    
+    to_compute = apply_to_fileset(
+                selection,
+                max_chunks(dataset_runnable, 100000),
+                schemaclass=NanoAODSchema
+            )
+    
+    computed, = dask.compute(
+        to_compute,
+        scheduler='threads', #use synchronous on small number of files, threads for large number
+        scheduling_mode="depth-first",
+        resources={"cores": 4},
+        resources_mode=None,
+        lazy_transfers=False, 
+        prune_files=True,
+        #task_mode="function-calls",
+        #lib_resources={'cores': 12, 'slots': 12},
+    )
+    save(computed, 'hists/hists.coffea')
