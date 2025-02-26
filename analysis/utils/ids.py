@@ -210,7 +210,7 @@ def isSoftAK4(j, year):
         return puId
 
     mask = (
-        (j.pt > 25.0) 
+        (j.pt > 8.0) 
         & (abs(j.eta) < 2.4) 
         & (j.jetId > 1)
         & (j.puIdDisc > puId_cut_low_pt(j.pt))

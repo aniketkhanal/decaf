@@ -3,6 +3,7 @@ import correctionlib
 from correctionlib import convert
 import os
 import awkward as ak
+import dask_awkward as dak
 
 import numpy as np
 from coffea import lookup_tools, jetmet_tools, util
@@ -777,15 +778,15 @@ class BTagCorrector:
         light_up_uncorrelated = P(eff_data_light_up_uncorrelated)/P(eff)
         light_down_uncorrelated = P(eff_data_light_down_uncorrelated)/P(eff)
         
-        return np.nan_to_num(nom, nan=1.), \
-        np.nan_to_num(bc_up_correlated, nan=1.), \
-        np.nan_to_num(bc_down_correlated, nan=1.), \
-        np.nan_to_num(bc_up_uncorrelated, nan=1.), \
-        np.nan_to_num(bc_down_uncorrelated, nan=1.), \
-        np.nan_to_num(light_up_correlated, nan=1.), \
-        np.nan_to_num(light_down_correlated, nan=1.), \
-        np.nan_to_num(light_up_uncorrelated, nan=1.), \
-        np.nan_to_num(light_down_uncorrelated, nan=1.)
+        return dak.nan_to_num(nom, nan=1.), \
+        dak.nan_to_num(bc_up_correlated, nan=1.), \
+        dak.nan_to_num(bc_down_correlated, nan=1.), \
+        dak.nan_to_num(bc_up_uncorrelated, nan=1.), \
+        dak.nan_to_num(bc_down_uncorrelated, nan=1.), \
+        dak.nan_to_num(light_up_correlated, nan=1.), \
+        dak.nan_to_num(light_down_correlated, nan=1.), \
+        dak.nan_to_num(light_up_uncorrelated, nan=1.), \
+        dak.nan_to_num(light_down_uncorrelated, nan=1.)
 
 jec_name_map = {
     'JetPt': 'pt',
