@@ -32,95 +32,53 @@ def update(events, collections):
 
 def make_output():
     return {
-        'sumw': 0.,
+        #'sumw': 0.,
         "met": (
             hda.Hist.new
+            .Reg(50, 0, 300, name="met", label = 'pT [GeV]')  
+            .StrCat([], name="systematic", growth = True)      
             .StrCat([], name="dataset", growth = True)     
             .Var([-10, 0, 55, 1000], name="sr_hadw")   
             .Var([-10, 0, 55, 1000], name="sr_hadws")
-            .Var([-10, 0, 55, 1000], name="br_tt")
-            .Reg(50, 0, 300, name="met", label = 'pT [GeV]')               
+            .Var([-10, 0, 55, 1000], name="br_tt")       
             .Weight()                               
         ),
         "chi_hadW": (
             hda.Hist.new
+            .Reg(50, 0, 5, name="chi_hadW", label=r'$\chi^2$')
             .StrCat([], name="dataset", growth = True)
+            .StrCat([], name="systematic", growth = True)  
             .Var([-10, 0, 55, 1000], name="sr_hadw")
             .Var([-10, 0, 55, 1000], name="sr_hadws")
             .Var([-10, 0, 55, 1000], name="br_tt")
-            .Reg(50, 0, 5, name="chi_hadW", label=r'$\chi^2$')
             .Weight()
         ),
         "chi_hadWs": (
             hda.Hist.new
+            .Reg(50, 0, 5, name="chi_hadWs", label=r'$\chi^2$')
+            .StrCat([], name="systematic", growth = True)  
             .StrCat([], name="dataset", growth = True)
             .Var([-10, 0, 55, 1000], name="sr_hadw")
             .Var([-10, 0, 55, 1000], name="sr_hadws")
             .Var([-10, 0, 55, 1000], name="br_tt")
-            .Reg(50, 0, 5, name="chi_hadWs", label=r'$\chi^2$')
+
             .Weight()
         ),
         "chi_tt": (
             hda.Hist.new
+            .Reg(50, 0, 5, name="chi_tt", label=r'$\chi^2$')
+            .StrCat([], name="systematic", growth = True)  
             .StrCat([], name="dataset", growth = True)
             .Var([-10, 0, 55, 1000], name="sr_hadw")
             .Var([-10, 0, 55, 1000], name="sr_hadws")
             .Var([-10, 0, 55, 1000], name="br_tt")
-            .Reg(50, 0, 5, name="chi_tt", label=r'$\chi^2$')
             .Weight()
         ),
     }
 
-'''def process(events):
-    systematics = False
-    skipJER = True
-
-    isData = not hasattr(events, "genWeight")
-    if isData:
-        # Nominal JEC are already applied in data
-        return selection(events, xsecs, None)
-    
-    corrections = load(f'{path}/corrections.coffea')
-
-    jet_factory              = corrections['jet_factory']
-    met_factory              = corrections['met_factory']
-
-    nojer = "NOJER" if skipJER else ""
-    if 'year' in events.metadata:
-        print(events.metadata['year']) 
-        year = events.metadata['year'].replace('UL','20').replace("_", "")
-        lumi = events.metadata['lumi']
-    thekey = f"{year}mc{nojer}"
-
-    def add_jec_variables(jets, event_rho):
-        jets["pt_raw"] = (1 - jets.rawFactor)*jets.pt
-        jets["mass_raw"] = (1 - jets.rawFactor)*jets.mass
-        jets["pt_gen"] = ak.values_astype(ak.fill_none(jets.matched_gen.pt, 0), np.float32)
-        jets["event_rho"] = ak.broadcast_arrays(event_rho, jets.pt)[0]
-        return jets
-    
-    jets = jet_factory[thekey].build(add_jec_variables(events.Jet, events.fixedGridRhoFastjetAll))
-    met = met_factory.build(events.MET, jets)
-
-    shifts = [({"Jet": jets,"MET": met}, None)]
-    if systematics:
-        shifts.extend([
-            ({"Jet": jets.JES_jes.up, "MET": met.JES_jes.up}, "JESUp"),
-            ({"Jet": jets.JES_jes.down, "MET": met.JES_jes.down}, "JESDown"),
-            ({"Jet": jets, "MET": met.MET_UnclusteredEnergy.up}, "UESUp"),
-            ({"Jet": jets, "MET": met.MET_UnclusteredEnergy.down}, "UESDown"),
-        ])
-    if skipJER:
-        shifts.extend([
-            #({"Jet": jets.JER.up, "MET": met.JER.up}, "JERUp"),
-            #({"Jet": jets.JER.down, "MET": met.JER.down}, "JERDown"),
-        ])
-    return sum(selection(update(events, collections), name) for collections, name in shifts)'''
-
 def selection(events):
 
     dataset = events.metadata['dataset']
-    shift_name = None #placeholder
 
     samples = {
             'msr':('QCD', 'TT', 'SingleMuon', 'TTToSemiLeptonic', 'GluGluToHHTo2B2VLNu2J'),
@@ -240,8 +198,6 @@ def selection(events):
     weights = Weights(None, storeIndividual=True)
 
     output = make_output()
-    if shift_name is None and not isData:
-        output['sumw'] = ak.sum(events.genWeight)
 
     year = '2018' #placeholder, want this as an input while running the processor eventually
     lumi = 1000.*float(lumis[year])
@@ -625,9 +581,9 @@ def selection(events):
 
         gen['isTop'] = (abs(gen.pdgId)==6)&gen.hasFlags(['fromHardProcess', 'isLastCopy'])
         genTops = gen[gen.isTop]
-        nlo = dak.ones_like(events.MET.pt, dtype='float')
-        if('TT' in dataset): 
-            nlo = np.sqrt(get_ttbar_weight(genTops[:,0].pt) * get_ttbar_weight(genTops[:,1].pt))
+        nlo = ak.ones_like(events.MET.pt, dtype='float')
+        #if('TT' in dataset): 
+        #    nlo = ak.from_numpy(np.sqrt(get_ttbar_weight(genTops[:,0].pt) * get_ttbar_weight(genTops[:,1].pt)))
             
         gen['isW'] = (abs(gen.pdgId)==24)&gen.hasFlags(['fromHardProcess', 'isLastCopy'])
         gen['isZ'] = (abs(gen.pdgId)==23)&gen.hasFlags(['fromHardProcess', 'isLastCopy'])
@@ -637,8 +593,8 @@ def selection(events):
         genDYs = gen[gen.isZ&(gen.mass>30)]
         
         nnlo_nlo = {}
-        nlo_qcd = dak.ones_like(events.MET.pt, dtype='float')
-        nlo_ewk = dak.ones_like(events.MET.pt, dtype='float')
+        nlo_qcd = ak.ones_like(events.MET.pt, dtype='float')
+        nlo_ewk = ak.ones_like(events.MET.pt, dtype='float')
         if('WJets' in dataset): 
             nlo_qcd = get_nlo_qcd_weight['w'](genWs.pt.max())
             nlo_ewk = get_nlo_ewk_weight['w'](genWs.pt.max())
@@ -671,7 +627,7 @@ def selection(events):
         trig = {
             'esr':   get_ele_trig_weight(year, leading_e.eta+leading_e.deltaEtaSC, leading_e.pt),
             #'msr':   get_mu_trig_weight(year, leading_mu.eta, leading_mu.pt)
-            'msr': dak.ones_like(events.MET.pt, dtype='float'),
+            'msr': ak.ones_like(events.MET.pt, dtype='float'),
         }
 
         ### 
@@ -689,7 +645,7 @@ def selection(events):
                                                 
         reco = {
             'esr': leading_e.reco_sf, 
-            'msr': dak.ones_like(events.MET.pt, dtype='float'),
+            'msr': ak.ones_like(events.MET.pt, dtype='float'),
         }
 
         ###
@@ -697,7 +653,7 @@ def selection(events):
         ###
 
         isolation = {
-            'esr': dak.ones_like(events.MET.pt, dtype='float'),
+            'esr': ak.ones_like(events.MET.pt, dtype='float'),
             'msr': leading_mu.iso_sf
         }
         
@@ -728,35 +684,35 @@ def selection(events):
         #weights.add('nlo',nlo) 
         if 'cen' in nnlo_nlo:
             #weights.add('nnlo_nlo',nnlo_nlo['cen'])
-            weights.add('qcd1',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['qcd1up']/nnlo_nlo['cen'], nnlo_nlo['qcd1do']/nnlo_nlo['cen'])
-            weights.add('qcd2',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['qcd2up']/nnlo_nlo['cen'], nnlo_nlo['qcd2do']/nnlo_nlo['cen'])
-            weights.add('qcd3',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['qcd3up']/nnlo_nlo['cen'], nnlo_nlo['qcd3do']/nnlo_nlo['cen'])
-            weights.add('ew1',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew1up']/nnlo_nlo['cen'], nnlo_nlo['ew1do']/nnlo_nlo['cen'])
-            weights.add('ew2G',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew2Gup']/nnlo_nlo['cen'], nnlo_nlo['ew2Gdo']/nnlo_nlo['cen'])
-            weights.add('ew3G',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew3Gup']/nnlo_nlo['cen'], nnlo_nlo['ew3Gdo']/nnlo_nlo['cen'])
-            weights.add('ew2W',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew2Wup']/nnlo_nlo['cen'], nnlo_nlo['ew2Wdo']/nnlo_nlo['cen'])
-            weights.add('ew3W',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew3Wup']/nnlo_nlo['cen'], nnlo_nlo['ew3Wdo']/nnlo_nlo['cen'])
-            weights.add('ew2Z',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew2Zup']/nnlo_nlo['cen'], nnlo_nlo['ew2Zdo']/nnlo_nlo['cen'])
-            weights.add('ew3Z',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew3Zup']/nnlo_nlo['cen'], nnlo_nlo['ew3Zdo']/nnlo_nlo['cen'])
-            weights.add('mix',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['mixup']/nnlo_nlo['cen'], nnlo_nlo['mixdo']/nnlo_nlo['cen'])
-            #weights.add('muF',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['muFup']/nnlo_nlo['cen'], nnlo_nlo['muFdo']/nnlo_nlo['cen'])
-            #weights.add('muR',dak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['muRup']/nnlo_nlo['cen'], nnlo_nlo['muRdo']/nnlo_nlo['cen'])
+            weights.add('qcd1',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['qcd1up']/nnlo_nlo['cen'], nnlo_nlo['qcd1do']/nnlo_nlo['cen'])
+            weights.add('qcd2',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['qcd2up']/nnlo_nlo['cen'], nnlo_nlo['qcd2do']/nnlo_nlo['cen'])
+            weights.add('qcd3',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['qcd3up']/nnlo_nlo['cen'], nnlo_nlo['qcd3do']/nnlo_nlo['cen'])
+            weights.add('ew1',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew1up']/nnlo_nlo['cen'], nnlo_nlo['ew1do']/nnlo_nlo['cen'])
+            weights.add('ew2G',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew2Gup']/nnlo_nlo['cen'], nnlo_nlo['ew2Gdo']/nnlo_nlo['cen'])
+            weights.add('ew3G',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew3Gup']/nnlo_nlo['cen'], nnlo_nlo['ew3Gdo']/nnlo_nlo['cen'])
+            weights.add('ew2W',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew2Wup']/nnlo_nlo['cen'], nnlo_nlo['ew2Wdo']/nnlo_nlo['cen'])
+            weights.add('ew3W',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew3Wup']/nnlo_nlo['cen'], nnlo_nlo['ew3Wdo']/nnlo_nlo['cen'])
+            weights.add('ew2Z',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew2Zup']/nnlo_nlo['cen'], nnlo_nlo['ew2Zdo']/nnlo_nlo['cen'])
+            weights.add('ew3Z',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['ew3Zup']/nnlo_nlo['cen'], nnlo_nlo['ew3Zdo']/nnlo_nlo['cen'])
+            weights.add('mix',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['mixup']/nnlo_nlo['cen'], nnlo_nlo['mixdo']/nnlo_nlo['cen'])
+            #weights.add('muF',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['muFup']/nnlo_nlo['cen'], nnlo_nlo['muFdo']/nnlo_nlo['cen'])
+            #weights.add('muR',ak.ones_like(events.MET.pt, dtype='float'), nnlo_nlo['muRup']/nnlo_nlo['cen'], nnlo_nlo['muRdo']/nnlo_nlo['cen'])
         weights.add('pileup',pu)
         weights.add('trig', trig[region])
         weights.add('ids', ids[region])
         weights.add('reco', reco[region])
         weights.add('btagSF',btagSF)
-        weights.add('btagSFbc_correlated',dak.ones_like(events.MET.pt, dtype='float'), btagSFbc_correlatedUp/btagSF, btagSFbc_correlatedDown/btagSF)
-        weights.add('btagSFbc_uncorrelated',dak.ones_like(events.MET.pt, dtype='float'), btagSFbc_uncorrelatedUp/btagSF, btagSFbc_uncorrelatedDown/btagSF)
-        weights.add('btagSFlight_correlated',dak.ones_like(events.MET.pt, dtype='float'), btagSFlight_correlatedUp/btagSF, btagSFlight_correlatedDown/btagSF)
-        weights.add('btagSFlight_uncorrelated',dak.ones_like(events.MET.pt, dtype='float'), btagSFlight_uncorrelatedUp/btagSF, btagSFlight_uncorrelatedDown/btagSF)
+        weights.add('btagSFbc_correlated',ak.ones_like(events.MET.pt, dtype='float'), btagSFbc_correlatedUp/btagSF, btagSFbc_correlatedDown/btagSF)
+        weights.add('btagSFbc_uncorrelated',ak.ones_like(events.MET.pt, dtype='float'), btagSFbc_uncorrelatedUp/btagSF, btagSFbc_uncorrelatedDown/btagSF)
+        weights.add('btagSFlight_correlated',ak.ones_like(events.MET.pt, dtype='float'), btagSFlight_correlatedUp/btagSF, btagSFlight_correlatedDown/btagSF)
+        weights.add('btagSFlight_uncorrelated',ak.ones_like(events.MET.pt, dtype='float'), btagSFlight_uncorrelatedUp/btagSF, btagSFlight_uncorrelatedDown/btagSF)
         
-    lumimask = dak.ones_like(events.MET.pt, dtype='bool') #using events.MET.pt to get 1d array with len(events)
+    lumimask = ak.ones_like(events.MET.pt, dtype='bool') #using events.MET.pt to get 1d array with len(events)
     if isData:
         lumimask = lumiMasks[year](events.run, events.luminosityBlock)
     selection.add('lumimask', lumimask)
 
-    met_filters =  dak.ones_like(events.MET.pt, dtype='bool')
+    met_filters =  ak.ones_like(events.MET.pt, dtype='bool')
     #if isData: met_filters = met_filters & events.Flag['eeBadScFilter'] #this filter is recommended for data only
     for flag in met_filters_names[year]:
         met_filters = met_filters & events.Flag[flag]
@@ -774,9 +730,9 @@ def selection(events):
         triggers = triggers | events.HLT[trigger_path]
     selection.add('singlemuon_triggers', triggers)
 
-    noHEMj = dak.ones_like(events.MET.pt, dtype='bool')
+    noHEMj = ak.ones_like(events.MET.pt, dtype='bool')
     if year=='2018': noHEMj = (j_nHEM==0)
-    noHEMmet = dak.ones_like(events.MET.pt, dtype='bool')
+    noHEMmet = ak.ones_like(events.MET.pt, dtype='bool')
     if year=='2018': noHEMmet = (met.pt>470)|(met.phi>-0.62)|(met.phi<-1.62)    
     
     selection.add('isoneE', (e_ntight==1) & (mu_nloose==0) & (pho_nloose==0) & (tau_nloose==0))
@@ -798,10 +754,13 @@ def selection(events):
             return ak.fill_none(val[cut], np.nan)
 
     
-    def fill():
+    def fill(systematic):
         cut = selection.all(*regions[region])
-        weight = weights.weight()[cut]
-        
+        if systematic in weights.variations:
+            weight = weights.weight(modifier=systematic)[cut]
+        else:
+            weight = weights.weight()[cut]
+        sname = 'nominal' if systematic is None else systematic
         variables = {
             'met':                         met.pt,
             'chi_hadW':                    ak.firsts(chi_sq_hadW),
@@ -815,14 +774,16 @@ def selection(events):
             normalized_variable = normalized_variable = {variable: normalize(variables[variable],cut)}
             output[variable].fill(
                 dataset = dataset,
+                systematic = sname,
                 sr_hadw =  jj_sel_gen_mass_hadW[cut],
                 sr_hadws = jj_sel_gen_mass_hadWs[cut],
                 br_tt =    jj_sel_gen_mass_tt[cut],
                 **normalized_variable,
                 weight= weight
             )
-    
-    fill()
+
+        if systematic is None and not isData:
+            output['sumw'] = ak.sum(events.genWeight)
 
     scale = 1
     if isinstance(xsec, dict):
@@ -837,6 +798,68 @@ def selection(events):
             continue
         output[key] *= scale
 
+    #systematics
+    '''systematics = True
+    skipJER = False
+
+    isData = not hasattr(events, "genWeight")
+    if isData:
+        # Nominal JEC are already applied in data
+        return selection(events, xsecs, None)
+    
+    corrections = load(f'{path}/corrections.coffea')
+
+    jet_factory              = corrections['jet_factory']
+    met_factory              = corrections['met_factory']
+
+    nojer = "NOJER" if skipJER else ""
+    if 'year' in events.metadata:
+        year = events.metadata['year'].replace('UL','20').replace("_", "")
+        lumi = events.metadata['lumi']
+    thekey = f"{year}mc{nojer}"
+
+    def add_jec_variables(jets, event_rho):
+        jets["pt_raw"] = (1 - jets.rawFactor)*jets.pt
+        jets["mass_raw"] = (1 - jets.rawFactor)*jets.mass
+        jets["pt_gen"] = ak.values_astype(ak.fill_none(jets.matched_gen.pt, 0), np.float32)
+        jets["event_rho"] = ak.broadcast_arrays(event_rho, jets.pt)[0]
+        return jets
+    
+    jets = jet_factory[thekey].build(add_jec_variables(events.Jet, events.fixedGridRhoFastjetAll))
+    met = met_factory.build(events.MET, jets)
+
+    fill({"Jet": jets, "MET": met}, None)
+    if systematics:
+        # JES Up
+        jet_var = jets.JES_jes.up
+        met_var = met.JES_jes.up
+        fill({"Jet": jet_var, "MET": met_var}, "JESUp")
+        
+        # JES Down
+        jet_var = jets.JES_jes.down
+        met_var = met.JES_jes.down
+        fill({"Jet": jet_var, "MET": met_var}, "JESDown")
+        
+        # UES Up
+        met_var = met.MET_UnclusteredEnergy.up
+        fill({"Jet": jets, "MET": met_var}, "UESUp")
+        
+        # UES Down
+        met_var = met.MET_UnclusteredEnergy.down
+        fill({"Jet": jets, "MET": met_var}, "UESDown")
+
+    # Process JER variations if skipJER flag is false
+        if not skipJER:
+            # JER Up
+            jet_var = jets.JER.up
+            met_var = met.JER.up
+            fill({"Jet": jet_var, "MET": met_var}, "JERUp")
+            
+            # JER Down
+            jet_var = jets.JER.down
+            met_var = met.JER.down
+            fill({"Jet": jet_var, "MET": met_var}, "JERDown")'''
+    fill(None)
     return output
 
 #show progress bar and resource usage
@@ -846,55 +869,57 @@ rprof = ResourceProfiler()
 
 filename = "root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_3.root"
 
-'''if __name__ == '__main__':
-
-    parser = OptionParser()
-    parser.add_option('-m', '--metadata', dest="metadata",
-                        default="bbWW/metadata/bbWW_decaf.yml", help='Metadata datasets file.')
-    (options, args) = parser.parse_args()
-
-    metadata = yaml.safe_load(open(options.metadata, 'r'))
-    xsec = {k: v['xs'] for k,v in metadata['datasets'].items() if 'xs' in v}
-
-    dakevents = NanoEventsFactory.from_root(
-        {filename: "Events"},
-        steps_per_file=10,
-        metadata={"dataset": "GluGluToHHTo2B2VLNu2J", "year" : "2018", "xs" : xsec, "lumi" : 1 },
-        schemaclass=NanoAODSchema,
-        delayed = True,
-    ).events()
-
-    out = process(dakevents, xsec)
-    computed, = dask.compute(out, scheduler='synchronous', scheduling_mode="depth-first",)
-    save(computed, 'hists/hists.coffea')'''
-
+#eventually want the fileset dictionary to come from a separate file
 fileset = {
     'GluGluToHHTo2B2VLNu2J': {
-        "files" : { 'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_3.root': "Events",
-                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_4.root': "Events",
-                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_10.root': "Events",
-                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_11.root': "Events",
-                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_8.root': "Events",
-                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_12.root': "Events",
-                    'root://cmseos.fnal.gov//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_7.root': "Events",
+        "files" : { 'root://cms-xrd-global.cern.ch//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_3.root': "Events",
+                    'root://cms-xrd-global.cern.ch//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_4.root': "Events",
+                    'root://cms-xrd-global.cern.ch//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_10.root': "Events",
+                    'root://cms-xrd-global.cern.ch//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_11.root': "Events",
+                    'root://cms-xrd-global.cern.ch//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_8.root': "Events",
+                    'root://cms-xrd-global.cern.ch//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_12.root': "Events",
+                    'root://cms-xrd-global.cern.ch//store/user/algomez/JMEnano/GluGluToHHTo2B2VLNu2J_node_cHHH1_TuneCP5_PSWeights_13TeV-powheg-pythia8/RunIIAutumn18MiniAOD_JMENanoAODv9_PrivateProdv1p1/240906_201658/0000/B2G-RunIISummer20UL18NanoAODv9-00923_7.root': "Events",
         },
-        "metadata" :  {"dataset": "GluGluToHHTo2B2VLNu2J", "year" : "2018", "lumi" : 59.83 },
-    }
+        "metadata" :  {"dataset": "GluGluToHHTo2B2VLNu2J", "year" : "2018", "lumi" : 59.83 }
+    },
+    'TTToSemiLeptonic': {
+        "files": {  'root://cms-xrd-global.cern.ch//store/mc/RunIISummer20UL18NanoAODv9/TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8/NANOAODSIM/20UL18JMENano_106X_upgrade2018_realistic_v16_L1v1-v1/100000/02C616A0-8765-F349-87AB-B2C32B8DCAC2.root': "Events",
+                    'root://cms-xrd-global.cern.ch//store/mc/RunIISummer20UL18NanoAODv9/TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8/NANOAODSIM/20UL18JMENano_106X_upgrade2018_realistic_v16_L1v1-v1/100000/05FF754A-602C-C647-944E-E35D152F5F3E.root': "Events", 
+                    'root://cms-xrd-global.cern.ch//store/mc/RunIISummer20UL18NanoAODv9/TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8/NANOAODSIM/20UL18JMENano_106X_upgrade2018_realistic_v16_L1v1-v1/100000/08A35EA4-806F-9C4B-97A4-EA49543128CD.root': "Events"
+        },
+        "metadata" :  {"dataset": "TTToSemiLeptonic", "year" : "2018", "lumi" : 59.83 }
+    }                                                                                                                                   
 }
 if __name__ == '__main__':
 
     parser = OptionParser()
     parser.add_option('-m', '--metadata', dest="metadata",
                         default="bbWW/metadata/bbWW_decaf.yml", help='Metadata datasets file.')
+    parser.add_option('-d', '--dataset', dest="dataset",
+                     help='Specify which dataset to process. Must be one of the keys in the fileset dictionary.')
+    parser.add_option('-o', '--output', dest="output",
+                     default="hists/hists.coffea", help='Output file path.')
     (options, args) = parser.parse_args()
 
     metadata = yaml.safe_load(open(options.metadata, 'r'))
     xsecs = {k: v['xs'] for k,v in metadata['datasets'].items() if 'xs' in v}
 
+    if options.dataset:
+        if options.dataset in fileset:
+            filtered_fileset = {options.dataset: fileset[options.dataset]}
+            print(f"Processing dataset: {options.dataset}")
+        else:
+            available_datasets = list(fileset.keys())
+            raise ValueError(f"Dataset '{options.dataset}' not found. Available datasets: {available_datasets}")
+    else:
+        filtered_fileset = fileset
+        print(f"No dataset specified. Processing all datasets: {list(fileset.keys())}")
+
+
     dataset_runnable, dataset_updated = preprocess(
         fileset,
         align_clusters=False,
-        step_size=5000,
+        step_size=100000, #chunk size
         files_per_batch=2,
         skip_bad_files=True,
         save_form=False,
@@ -903,19 +928,18 @@ if __name__ == '__main__':
     
     to_compute = apply_to_fileset(
                 selection,
-                max_chunks(dataset_runnable, 100000),
+                max_chunks(dataset_runnable, 20),
                 schemaclass=NanoAODSchema
             )
     
     computed, = dask.compute(
         to_compute,
-        scheduler='threads', #use synchronous on small number of files, threads for large number
-        scheduling_mode="depth-first",
+        scheduler='threads', #select parallelising method 
         resources={"cores": 4},
-        resources_mode=None,
-        lazy_transfers=False, 
-        prune_files=True,
+        lazy_transfers=True, 
+        prune_depth = 2,
         #task_mode="function-calls",
         #lib_resources={'cores': 12, 'slots': 12},
     )
-    save(computed, 'hists/hists.coffea')
+    save(computed, options.output)
+    print(f"Output histograms in {options.output}")
