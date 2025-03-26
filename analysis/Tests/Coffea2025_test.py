@@ -1,9 +1,10 @@
 import numpy as np
 import awkward as ak
 import vector
+import warnings
 from coffea.nanoevents.methods import candidate
 from coffea.util import load, save
-from coffea.nanoevents import NanoEventsFactory, NanoAODSchema
+from coffea.nanoevents import NanoAODSchema
 from coffea.analysis_tools import Weights, PackedSelection
 from coffea.lumi_tools import LumiMask
 from coffea.dataset_tools import (
@@ -12,7 +13,6 @@ from coffea.dataset_tools import (
 )
 import dask
 import dask_awkward as dak
-import hist
 import hist.dask as hda
 from dask.diagnostics import ProgressBar
 from dask.diagnostics import ResourceProfiler
@@ -21,6 +21,10 @@ import yaml
 import json
 
 if __name__ == '__main__':
+
+    warnings.filterwarnings("ignore", "Missing cross-reference index for")
+    warnings.filterwarnings("ignore", "Please ensure")
+    warnings.filterwarnings("ignore", "invalid value")
 
     vector.register_awkward()
     path = "decaf/analysis/data/"
@@ -99,7 +103,6 @@ if __name__ == '__main__':
         nojer = "NOJER" if skipJER else ""
         if 'year' in events.metadata:
             year = events.metadata['year'].replace('UL','20').replace("_", "")
-            lumi = events.metadata['lumi']
         thekey = f"{year}mc{nojer}"
 
         def add_jec_variables(jets, event_rho):
@@ -126,6 +129,7 @@ if __name__ == '__main__':
                     ({"Jet": jets.JER.down, "MET": met.JER.down}, "JERDown"),
                 ])
 
+        # fill histograms separately for each systematic key
         for collections, name in shifts:
             selection(update(events, collections), output, name)           
         return output
@@ -251,7 +255,7 @@ if __name__ == '__main__':
         selection = PackedSelection(dtype="uint64")
         weights = Weights(None, storeIndividual=True)
 
-        year = '2018' #placeholder, want this as an input while running the processor eventually
+        year = events.metadata["year"]
         lumi = 1000.*float(lumis[year])
         xsec = xsecs
 
@@ -449,13 +453,15 @@ if __name__ == '__main__':
             return ak.where(abs(pz_1) < abs(pz_2), pz_1, pz_2)
             
         # hadronic W* signal reconstruction
+        
+        # need "charge" here so we can add them with electrons/muons four vectors
         v_e = ak.zip(
             {
                 "x": met.pt * np.cos(met.phi),
                 "y": met.pt * np.sin(met.phi),
                 "z": nu_pz(leading_e, met),
                 "t": np.sqrt(met.pt**2 + nu_pz(leading_e, met)**2),
-                "charge" : met.pt * 0 #placeholder value so four vector addition is compatible
+                "charge" : met.pt * 0 
             },
             with_name="Candidate"
         )
@@ -514,45 +520,6 @@ if __name__ == '__main__':
         ## end hadronic W* signal reconstruction
 
         ## hadronic W signal reconstruction
-        def nu_pz_Ws(l,nu,W):
-            m_H = 125.35
-        
-            A = m_H**2 - W.mass**2 - l.mass**2 - 2*l.energy*W.energy + 2*(l.px*W.px + l.py*W.py + l.pz*W.pz) + 2*(l.px*nu.pt * np.cos(nu.phi) + l.py*nu.pt * np.sin(nu.phi) + W.px*nu.pt * np.cos(nu.phi) + W.py*nu.pt * np.sin(nu.phi))
-            B = A**2/4 - (l.energy + W.energy)**2*((nu.pt * np.cos(nu.phi))**2 + (nu.pt * np.sin(nu.phi))**2)
-            C = (l.pz + W.pz)**2 - (l.energy + W.energy)**2
-        
-            discriminant = A**2*(l.pz+W.pz)**2 - 4*B*C
-            sqrt_discriminant = ak.where(discriminant >= 0, np.sqrt(discriminant),np.nan) # avoiding imaginary solutions
-        
-            pz_1 = (-A*(l.pz + W.pz) + sqrt_discriminant)/(2*C)
-            pz_2 = (-A*(l.pz + W.pz) - sqrt_discriminant)/(2*C)
-            pz =  ak.where(abs(pz_1) < abs(pz_2), pz_1, pz_2)                  
-        
-            return pz
-
-        v_e_hadW = ak.zip(
-            {
-                "x": met.pt * np.cos(met.phi),
-                "y": met.pt * np.sin(met.phi),
-                "z": nu_pz_Ws(leading_e, met, qq),
-                "t": np.sqrt(met.pt**2 + nu_pz_Ws(leading_e, met, qq)**2),
-                "charge" : met.pt * 0
-            },
-            with_name="Candidate",
-            )
-
-        v_mu_hadW = ak.zip(
-            {
-                "x": met.pt * np.cos(met.phi),
-                "y": met.pt * np.sin(met.phi),
-                "z": nu_pz_Ws(leading_mu, met, qq),
-                "t": np.sqrt(met.pt**2 + nu_pz_Ws(leading_mu, met, qq)**2)
-            },
-            with_name="Candidate",
-            )
-        
-        v_mu_hadW = ak.mask(v_mu_hadW, ~np.isnan(v_mu_hadW.pz))
-        v_e_hadW = ak.mask(v_e_hadW, ~np.isnan(v_e_hadW.pz)) #avoid calculations for imaginary solutions that are not always skipped
         
         #transverse mass
         mT = {
@@ -860,17 +827,14 @@ if __name__ == '__main__':
     rprof = ResourceProfiler()
 
     parser = OptionParser()
-    parser.add_option('-m', '--metadata', dest="metadata",
-                        default="bbWW/metadata/bbWW_decaf.yml", help='Metadata datasets file.')
     parser.add_option('-d', '--dataset', dest="dataset",
                      help='Specify which dataset to process. Must be one of the keys in the fileset dictionary.')
     parser.add_option('-o', '--output', dest="output",
                      default="hists/hists.coffea", help='Output file path.')
     (options, args) = parser.parse_args()
 
-    metadata = yaml.safe_load(open(options.metadata, 'r'))
-    xsecs = {k: v['xs'] for k,v in metadata['datasets'].items() if 'xs' in v}
-
+    xsecs = {k: v['metadata']['xs'] for k, v in fileset.items() if 'metadata' in v and 'xs' in v['metadata']}
+    years = {k: v['metadata']['year'] for k, v in fileset.items() if 'metadata' in v and 'year' in v['metadata']}
 
     if options.dataset:
         if options.dataset in fileset:
@@ -883,10 +847,14 @@ if __name__ == '__main__':
         filtered_fileset = fileset
         print(f"No dataset specified. Processing all datasets: {list(fileset.keys())}")
     
+    
     to_compute = apply_to_fileset(
                 process,
-                max_chunks(filtered_fileset, 20), ##just use fileset here if processing over all samples
-                schemaclass=NanoAODSchema
+                max_chunks(filtered_fileset, 100), #just use fileset (without max_chunks) here if processing all samples
+                schemaclass=NanoAODSchema,
+                uproot_options=
+                {"allow_read_errors_with_report": (ValueError, OSError, TypeError, KeyError), 
+                 "skipbadfiles": True, "timeout": 300}
             )
     
     computed, = dask.compute(
